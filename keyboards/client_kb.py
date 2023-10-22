@@ -10,6 +10,6 @@ khl1 = KeyboardButton('/help')
 kb_help_client = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_help_client.row(khl1)
 
-kcp1 = KeyboardButton('Проблема: you are not whitelisted on this server')
+kcp1 = KeyboardButton('Проблема you are not whitelisted on this server')
 kb_client_problem = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_client_problem.row(kcp1)

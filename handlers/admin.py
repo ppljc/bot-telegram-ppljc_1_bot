@@ -11,18 +11,25 @@ from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeybo
 # -------------- Вспомогательные функции --------------
 
 # Предупреждение о ошибке при активации админ мода
-async def admin_source_warning(user_id):
-    if await sqlite_db.user_check('isadmin', 'user_id', user_id) == 'yes':
+async def admin_source_warning(user_id, exception, function):
+    if (await sqlite_db.user_check('isadmin', 'user_id', user_id) == 'yes') and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(user_id, text='Вы не вошли в админ мод!')
         print(f'Пользователь {user_id} не вошел в админ мод перед использованием команд.')
-    elif await sqlite_db.user_check('isadmin', 'user_id', user_id) == 'not':
+        return
+    elif (await sqlite_db.user_check('isadmin', 'user_id', user_id) == 'not') and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(user_id, text='Вы не админ!')
         print(f'Пользователь {user_id} не является админом, но пытается выполнить его команды.')
-    elif await sqlite_db.user_check('isadmin', 'user_id', user_id) == 0:
+        return
+    elif (await sqlite_db.user_check('isadmin', 'user_id', user_id) == 0) and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(user_id, text='Вы ещё не зарегистрировались.\n' \
                                              'Сделайте это с помощью команды "Регистрация никнейм_из_майнкрафта".\n' \
                                              'Затем используй /help для получения списка команд.')
         print(f'Пользователь {user_id} не зарегистрировался, но пытался выполнить команды админа.')
+        return
+    elif exception:
+        await bot.send_message(user_id, text='Возникла ошибка! Но мы её уже решаем.')
+        print(f'Пользователь {user_id} своими действиями вызвал ошибку "{exception}" в функции "{function}".')
+        await admin_source_alert(user_id, 'exception', function=function, exception=exception)
 
 # Сообщение о активации админ мода
 async def admin_source_activate(message):
@@ -39,17 +46,25 @@ async def admin_source_requests(message, user_id, val):
         amount = len(await sqlite_db.user_list('approval', 'not'))
         await bot.send_message(message.from_user.id, text=f'Количество оставшихся заявок: {amount}.')
         print(f'Админу {message.from_user.id} сообщено, что количество оставшихся заявок: {amount}.')
+        await admin_requests(message)
         return 1
     else:
         await bot.send_message(message.from_user.id, text='Больше заявок не осталось.')
         print(f'Админу {message.from_user.id} сообщено, что больше заявок не осталось.')
 
-async def admin_source_alert(admin_id, user_id, type):
+async def admin_source_alert(user_id, type, admin_id=0, function='', exception=''):
     if type == 'delete':
-        for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
+        for ret in (await sqlite_db.user_list('isadmin', 'yes', 'user_id')):
             if ret[0] != admin_id:
                 await bot.send_message(ret[0], text=f'Админ {admin_id} удалил пользователя {user_id}.')
                 print(f'Админ {ret[0]} оповещён о том, что админ {admin_id} удалил пользователя {user_id}.')
+    elif type == 'exception':
+        for ret in (await sqlite_db.user_list('isadmin', 'yes', 'user_id')):
+            if ret[0] != admin_id:
+                await bot.send_message(ret[0], text=f'Пользователь {user_id} при вызове функции "{function}" получил ошибку "{exception}".')
+            elif ret[0] == admin_id:
+                await bot.send_message(ret[0], text=f'При вызове функции "{function}" вы получили ошибку "{exception}".')
+                print(f'Админ {ret[0]} оповещён о том, что пользователь {user_id} при вызове функции {function} получил ошибку {exception}.')
 
 # -------------- CallBack функции --------------
 
@@ -61,11 +76,12 @@ async def on_accept_application(query: types.CallbackQuery):
         await admin_rc.add_whitelist(query.from_user.id, username)
         if response == 'Player is not whitelisted':
             print(f'Админ {query.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {username}.')
-            await bot.send_message(message.from_user.id, text='Игрок не находится в вайтлсите.')
+            await bot.send_message(query.from_user.id, text='Игрок не находится в вайтлсите.')
         elif response == f'Removed {username} from the whitelist':
             print(f'Админ {query.from_user.id} удалил из вайтлиста игрока {username}.')
-            await bot.send_message(message.from_user.id, text=f'Игрок {username} удален из вайтлиста.')
-    except:
+            await bot.send_message(query.from_user.id, text=f'Игрок {username} удален из вайтлиста.')
+    except Exception as exception:
+        await admin_source_warning(query.from_user.id, exception, 'on_accept_applocation')
         print(f'Админ {query.from_user.id} обратился с коммандой whitelist add к выключенному серверу.')
         await query.answer(text='Сервер оффлайн!', show_alert=True)
         return
@@ -89,28 +105,29 @@ async def on_reject_application(query: types.CallbackQuery):
 async def admin_activate(message: types.Message):
     if await sqlite_db.user_check('isadmin', 'user_id', message.from_user.id) == 'yes':
         await admin_source_activate(message)
-        print(f'Пользователь с Telegram ID {message.from_user.id} входит в режим админа.')
+        print(f'Пользователь {message.from_user.id} входит в режим админа.')
     else:
         await sqlite_db.admin_add(message.from_user.id)
         await admin_source_activate(message)
-        print(f'Пользователь с Telegram ID {message.from_user.id} получает права админа.')
+        print(f'Пользователь {message.from_user.id} получает права админа.')
 
 # Добавление пользователя в вайтлист
 async def admin_requests(message: types.Message):
     try:
         if message.from_user.id == ID:
             if await sqlite_db.user_check('user_id', 'approval', 'not') != 0:
-                ret = str(await sqlite_db.user_check('user_id', 'approval', 'not'))
-                await bot.send_message(message.from_user.id, text=ret, reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить', callback_data=f'accept_application {ret}'), InlineKeyboardButton('Отклонить', callback_data=f'reject_application {ret}')))
-                print(f'Админ {message.from_user.id} просмотрел заявку пользователя {ret}.')
+                user_id = await sqlite_db.user_check('user_id', 'approval', 'not')
+                username = await sqlite_db.user_check('tgname', 'approval', 'not')
+                await bot.send_message(message.from_user.id, text=f'{user_id} @{username}', reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить', callback_data=f'accept_application {user_id}'), InlineKeyboardButton('Отклонить', callback_data=f'reject_application {user_id}')))
+                print(f'Админ {message.from_user.id} просмотрел заявку пользователя {user_id}.')
             else:
                 await bot.send_message(message.from_user.id, text='Неподтвержденных заявок не осталось.')
                 print(f'Админ {message.from_user.id} просмотрел пустой список заявок.')
         else:
             await bot.send_message(message.from_user.id, text='Вы не админ!')
             print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "Посмотреть заявки".')
-    except:
-        await admin_source_warning(message.from_user.id)
+    except Exception as exception:
+        await admin_source_warning(message.from_user.id, exception, 'admin_requests')
 
 # Удаление пользователя из базы данных
 async def admin_removal(message: types.Message):
@@ -137,15 +154,15 @@ async def admin_removal(message: types.Message):
                 await sqlite_db.admin_delete(int(message.text[21:]))
                 await bot.send_message(message.text[21:], text='Мы сожалеем, но вы были удалены из базы данных сервера.', reply_markup=client_kb.kb_help_client)
                 await bot.send_message(message.from_user.id, text=f'Пользователь {message.text[21:]} удалён.')
-                await admin_source_alert(message.from_user.id, message.text[21:], 'delete')
+                await admin_source_alert(message.text[21:], 'delete', admin_id=message.from_user.id)
                 print(f'Админ {message.from_user.id} удалил пользователя {message.text[21:]}.')
         else:
             await bot.send_message(message.from_user.id, text='Вы не админ!')
             print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "Удалить пользователя".')
-    except:
-        await admin_source_warning(message.from_user.id)
+    except Exception as exception:
+        await admin_source_warning(message.from_user.id, exception, 'admin_removal')
 
-# Получение списка пользователей
+# Получение списка пользователей с одобренными заявками
 async def admin_userslist(message: types.Message):
     try:
         if message.from_user.id == ID:
@@ -158,9 +175,10 @@ async def admin_userslist(message: types.Message):
         else:
             await bot.send_message(message.from_user.id, text='Вы не админ!')
             print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "Список игроков".')
-    except:
-        await admin_source_warning(message.from_user.id)
+    except Exception as exception:
+        await admin_source_warning(message.from_user.id, exception, 'admin_userlist')
 
+# Получение списка пользователей с отклоненными заявками
 async def admin_bannedlist(message: types.Message):
     try:
         if message.from_user.id == ID:
@@ -173,8 +191,33 @@ async def admin_bannedlist(message: types.Message):
         else:
             await bot.send_message(message.from_user.id, text='Вы не админ!')
             print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "ЧС".')
-    except:
-        await admin_source_warning(message.from_user.id)
+    except Exception as exception:
+        await admin_source_warning(message.from_user.id, exception, 'admin_bannedlist')
+
+# Оповещение всех пользователей о чем-то
+async def admin_notification(message: types.Message):
+    try:
+        if message.from_user.id == ID:
+            if message.text[11:] == '':
+                await bot.send_message(message.from_user.id, text='Напишите в формате:\n'
+                                                                  'Оповестить "текст вашего сообщения".')
+                print(f'Админ {message.from_user.id} использовал неполную команду оповещения.')
+            else:
+                if message.text[-1] == '.' or message.text[-1] == '!' or message.text[-1] == '?':
+                    dot = ''
+                elif message.text[-1] == ',' or message.text[-1] == '\\':
+                    message.text[-1] = '.'
+                else:
+                    dot = '.'
+                for ret in (await sqlite_db.user_list('approval', 'yes', 'user_id')):
+                    await bot.send_message(ret[0], text=f'Важное увдомление!\n'
+                                                        f'{message.text[11:]}{dot}')
+                print(f'Админ {message.from_user.id} выполнил команду Оповестить с текстом "{message.text[11:]}"')
+        else:
+            await bot.send_message(message.from_user.id, text='Вы не админ!')
+            print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "Оповестить".')
+    except Exception as exception:
+        await admin_source_warning(message.from_user.id, exception, 'admin_notification')
 
 def register_handlers_admin(dp: Dispatcher):
     dp.register_callback_query_handler(on_accept_application, lambda x: x.data.startswith('accept_application'))
@@ -184,4 +227,5 @@ def register_handlers_admin(dp: Dispatcher):
     dp.register_message_handler(admin_removal, Text(startswith='Удалить пользователя'))
     dp.register_message_handler(admin_userslist, Text('Список пользователей'))
     dp.register_message_handler(admin_bannedlist, Text('ЧС'))
+    dp.register_message_handler(admin_notification, Text(startswith='Оповестить'))
     # dp.register_message_handler(admin_update, commands=['Update'])
