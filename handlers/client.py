@@ -5,10 +5,11 @@ from data_base import sqlite_db
 
 from aiogram import types, Dispatcher
 from aiogram.dispatcher.filters import Text
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 
 # -------------- Вспомогательные функции --------------
 
+# Оповещение админов о разных событиях
 async def client_source_alert(message, type, exception='', function=''):
 	if type == 'request':
 		for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
@@ -27,6 +28,7 @@ async def client_source_alert(message, type, exception='', function=''):
 			await bot.send_message(ret[0], text=f'Пользователь {message.from_user.id} при вызове функции "{function}" получил ошибку "{exception}".')
 			print(f'Админ {ret[0]} оповещён о том, что пользователь {message.from_user.id} при вызове функции {function} получил ошибку {exception}.')
 
+# Обработка разных событий
 async def client_source_warning(message, exception, function):
 	if exception:
 		await bot.send_message(message.from_user.id, text='Возникла ошибка! Но мы её уже решаем.')
@@ -102,6 +104,7 @@ async def client_server(message: types.Message):
 		print(f'Пользователь {message.from_user.id} попытался узнать статус выключенного сервера.')
 		await bot.send_message(message.from_user.id, text='Сервер находится оффлайн.')
 
+# Приемка проблем
 async def client_problem(message: types.Message):
 	try:
 		if await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'yes':
@@ -129,9 +132,20 @@ async def client_problem(message: types.Message):
 	except Exception as exception:
 		await client_source_warning(message, exception, 'client_problem')
 
+# Предложение проспонсировать проект
+async def client_donate(message: types.Message):
+	try:
+		if await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'yes':
+			await bot.send_message(message.from_user.id, text='Мы будем очень благодарны, если вы поддержите наш проект!\n'
+															'Крипто: BEP20(BSC) - USDT - 0x892fda42e19812bb01f8683caad0520c16ac2e0d\n'
+															'СБП: +79136610052')
+			print(f'Пользоатель {message.from_user.id} узнал о том, куда донатить.')
+	except Exception as exception:
+		await client_source_warning(message, exception, 'client_donate')
 
 def register_handlers_client(dp: Dispatcher):
 	dp.register_message_handler(client_start, commands=['start', 'help'])
 	dp.register_message_handler(client_register, Text(startswith='Регистрация'))
 	dp.register_message_handler(client_server, Text('Статус'))
 	dp.register_message_handler(client_problem, Text(startswith='Проблема'))
+	dp.register_message_handler(client_donate, Text('Поддержать'))

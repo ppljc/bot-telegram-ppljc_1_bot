@@ -1,5 +1,6 @@
 from mcrcon import MCRcon
 
+# Получение статуса сервера
 async def server_info(user_id):
     with MCRcon('localhost', 'password') as mcr:
         tps = mcr.command('tps')
@@ -13,6 +14,6 @@ async def server_info(user_id):
         for ret in list_slice:
             list_users += f' {ret}'
         if list_users == '':
-            list_users == 'no one'
+            list_users = ' no one'
         data = [tps_val, list_val, list_users]
     return data

@@ -6,4 +6,6 @@
 *__pycache__
 *pyvenv.cfg
 *server53.db
-*mcrcons
+*mcrcons/admin_rc.py
+*mcrcons/client_rc.py
+

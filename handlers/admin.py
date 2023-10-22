@@ -1,4 +1,6 @@
+import asyncio
 import config
+
 from mcrcons import admin_rc
 from create_bot import bot, dp
 from keyboards import admin_kb, client_kb
@@ -7,6 +9,10 @@ from data_base import sqlite_db
 from aiogram import types, Dispatcher
 from aiogram.dispatcher.filters import Text
 from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+
+# -------------- Переменные --------------
+
+is_monitoring = False
 
 # -------------- Вспомогательные функции --------------
 
@@ -52,6 +58,7 @@ async def admin_source_requests(message, user_id, val):
         await bot.send_message(message.from_user.id, text='Больше заявок не осталось.')
         print(f'Админу {message.from_user.id} сообщено, что больше заявок не осталось.')
 
+# Оповещение админов о разных событиях
 async def admin_source_alert(user_id, type, admin_id=0, function='', exception=''):
     if type == 'delete':
         for ret in (await sqlite_db.user_list('isadmin', 'yes', 'user_id')):
@@ -72,8 +79,7 @@ async def admin_source_alert(user_id, type, admin_id=0, function='', exception='
 async def on_accept_application(query: types.CallbackQuery):
     username = await sqlite_db.user_check('username', 'user_id', query.data[19:])
     try:
-        response = await admin_rc.add_whitelist(query.from_user.id, username)
-        await admin_rc.add_whitelist(query.from_user.id, username)
+        response = await admin_rc.server_whitelist_add(username)
         if response == 'Player is not whitelisted':
             print(f'Админ {query.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {username}.')
             await bot.send_message(query.from_user.id, text='Игрок не находится в вайтлсите.')
@@ -93,11 +99,25 @@ async def on_accept_application(query: types.CallbackQuery):
 
 # Отклонение заявки с помощью коллбэка
 async def on_reject_application(query: types.CallbackQuery):
-    await query.answer(text='Отклонено.', show_alert=True)
     await sqlite_db.user_approval('ban', query.data[19:])
+    await query.answer(text='Отклонено.', show_alert=True)
     print(f'Пользователь {query.data[19:]} получает отклонение заявки от админа {query.from_user.id}.')
     await bot.delete_message(query.from_user.id, query.message.message_id)
     await admin_source_requests(query, query.data[19:], 'отклонена')
+
+# Запуск мониторинга игроков
+async def admin_monitoring(query: types.CallbackQuery):
+    global is_monitoring
+    if not is_monitoring:
+        await query.answer(text='Вы запустили мониторинг.', show_alert=True)
+        await bot.delete_message(query.from_user.id, query.message.message_id)
+        is_monitoring = True
+        print(f'Админ {query.from_user.id} включил мониторинг игроков.')
+        await admin_players()
+    else:
+        await query.answer(text='Уже работает.', show_alert=True)
+        await bot.delete_message(query.from_user.id, query.message.message_id)
+        print(f'Админ {query.from_user.id} попытался включить уже запущенный мониторинг игроков.')
 
 # -------------- Handler функции --------------
 
@@ -139,7 +159,7 @@ async def admin_removal(message: types.Message):
             else:
                 username = await sqlite_db.user_check('username', 'user_id', message.text[21:])
                 try:
-                    response = await admin_rc.rem_whitelist(message.from_user.id, username)
+                    response = await admin_rc.server_whitelist_rem(username)
                     if response == 'Player is not whitelisted':
                         print(f'Админ {message.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {username}.')
                         await bot.send_message(message.from_user.id, text='Игрок не находится в вайтлисте.')
@@ -219,13 +239,77 @@ async def admin_notification(message: types.Message):
     except Exception as exception:
         await admin_source_warning(message.from_user.id, exception, 'admin_notification')
 
+# Мониторинг игроков на сервере
+async def admin_players():
+    val = 0
+    player_pr = []
+    while True:
+        response = ''
+        player_rn = await admin_rc.server_list()
+        if len(player_pr) < len(player_rn):
+            player_new = [item for item in player_rn if item not in player_pr]
+            if len(player_new) == 1:
+                response = f'К серверу присоединился: {player_new[0]}.'
+            elif len(player_new) > 1:
+                response = 'К серверу присоеднились:'
+                for val in player_new:
+                    response += f' {val},'
+                response = f'{response[:-1]}.'
+            for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
+                await bot.send_message(ret[0], text=f'{response}')
+            print(response)
+        elif len(player_pr) > len(player_rn):
+            player_quited = [item for item in player_pr if item not in player_rn]
+            if len(player_quited) == 1:
+                response = f'Сервер покинул: {player_quited[0]}.'
+            elif len(player_quited) > 1:
+                response = 'Сервер покинули:'
+                for val in player_quited:
+                    response += f' {val},'
+                response = f'{response[:-1]}.'
+            for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
+                await bot.send_message(ret[0], text=f'{response}')
+            print(response)
+        elif len(player_pr) == len(player_rn) and player_pr != player_rn:
+            player_new = [item for item in player_rn if item not in player_pr]
+            player_quited = [item for item in player_pr if item not in player_rn]
+            response = ''
+            if len(player_new) == 1:
+                response += f'К серверу присоединился: {player_new[0]}.'
+            elif len(player_new) > 1:
+                response += 'К серверу присоеднились:'
+                for val in player_new:
+                    response += f' {val},'
+                response = f'{response[:-1]}.'
+            if len(player_quited) == 1:
+                response += f'Сервер покинул: {player_quited[0]}.'
+            elif len(player_quited) > 1:
+                response += 'Сервер покинули:'
+                for val in player_quited:
+                    response += f' {val},'
+                response = f'{response[:-1]}.'
+            for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
+                await bot.send_message(ret[0], text=f'{response}')
+            print(response)
+        player_pr = player_rn
+        await asyncio.sleep(30)
+
+# Кнопка включения мониторинга
+async def admin_startup():
+    keyboard = InlineKeyboardMarkup()
+    keyboard.row(InlineKeyboardButton(text='Запустить', callback_data='monitoring on'), InlineKeyboardButton(text='Остановить', callback_data='monitoring off'))
+    for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
+        await bot.send_message(ret[0], text='Мониторинг игроков.', reply_markup=keyboard)
+        print(f'Админ {ret[0]} оповещён о том, что можно включить мониторинг игроков.')
+
+
 def register_handlers_admin(dp: Dispatcher):
     dp.register_callback_query_handler(on_accept_application, lambda x: x.data.startswith('accept_application'))
     dp.register_callback_query_handler(on_reject_application, lambda x: x.data.startswith('reject_application'))
+    dp.register_callback_query_handler(admin_monitoring, lambda x: x.data.startswith('monitoring'))
     dp.register_message_handler(admin_activate, commands=['Admin'], is_chat_admin=True)
     dp.register_message_handler(admin_requests, Text('Просмотреть заявки'))
     dp.register_message_handler(admin_removal, Text(startswith='Удалить пользователя'))
     dp.register_message_handler(admin_userslist, Text('Список пользователей'))
     dp.register_message_handler(admin_bannedlist, Text('ЧС'))
     dp.register_message_handler(admin_notification, Text(startswith='Оповестить'))
-    # dp.register_message_handler(admin_update, commands=['Update'])
