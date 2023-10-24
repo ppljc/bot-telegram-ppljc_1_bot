@@ -43,7 +43,7 @@ async def client_start(message: types.Message):
 		if await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'yes':
 			await bot.send_message(message.from_user.id, text='Вы уже зарегистрированы!', reply_markup=client_kb.kb_client)
 		elif await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'not':
-			await bot.send_message(message.from_user.id, text='Ваша заявка на рассмотрении.', reply_markup=client_kb.kb_client)
+			await bot.send_message(message.from_user.id, text='Ваша заявка на рассмотрении, просим подождать.', reply_markup=client_kb.kb_help_client)
 		elif await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'ban':
 			await bot.send_message(message.from_user.id, text='Ваша заявка отклонена. Вы можете обратиться по этому поводу к Васгену.', reply_markup=ReplyKeyboardRemove())
 		elif await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 0:
@@ -88,21 +88,27 @@ async def client_register(message: types.Message):
 # Статус сервера
 async def client_server(message: types.Message):
 	try:
-		data = await client_rc.server_info(message.from_user.id)
-		tps = data[0]
-		list = data[1]
-		list_users = data[2]
-		await bot.send_message(message.from_user.id, text=f'Текущее состояние сервера:\n'
-														  f' Число игроков: {list}\n'
-														  f' TPS: {tps}\n\n'
-														  f' Постояный IP сервера: 92.124.132.235')
-		print(f'Пользователь {message.from_user.id} запросил статус сервера: TPS: {tps}; LIST:{list_users}.')
+		if await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'yes':
+			data = await client_rc.server_info(message.from_user.id)
+			tps = data[0]
+			list = data[1]
+			list_users = data[2]
+			await bot.send_message(message.from_user.id,
+								   text=f'Текущее состояние сервера:\n'
+										f' Число игроков: {list}\n'
+										f' TPS: {tps}\n\n'
+										f' Постояный IP сервера: 92.124.132.235',
+								   reply_markup=client_kb.kb_client)
+			print(f'Пользователь {message.from_user.id} запросил статус сервера: TPS: {tps}; LIST:{list_users}.')
+		else:
+			print(f'Пользователь {message.from_user.id} не зарегистрировался, но пытался использовать команду статуса.')
+			await client_start(message)
 	except Exception as exception:
 		if exception:
 			await client_source_warning(message, exception, 'client_server')
 			return
 		print(f'Пользователь {message.from_user.id} попытался узнать статус выключенного сервера.')
-		await bot.send_message(message.from_user.id, text='Сервер находится оффлайн.')
+		await bot.send_message(message.from_user.id, text='Сервер находится оффлайн.', reply_markup=client_kb.kb_client)
 
 # Приемка проблем
 async def client_problem(message: types.Message):
@@ -118,14 +124,17 @@ async def client_problem(message: types.Message):
 			elif problem == 'you are not whitelisted on this server':
 				await client_source_alert(message, 'problem_whitelist')
 				await bot.send_message(message.from_user.id, text='Мы сообщили администратору о вашей проблеме, ожидайте.')
-				await bot.send_message(message.from_user.id, text='Нам очень жаль, что так вышло.\n'
-																  'Данная проблема возникает из-за использования whitelist из ванильного Minecraft. Скорее всего, ваш ник уже зарегестрирован в системе аккаунтов Mojang, а потому UUID берётся привязанный к нему. Из-за этого при входе на сервер Minecraft сравнивает ваш сгенерированный случайно UUID с UUID, привязанным к аккаунту Mojang. Данная проблема исправляется только вручную в данном исполнении системы whitelist. Наша команда уже ищет достойную и надежную замену данной технологии, которая не будет приводить к таким ошибкам.',
-																  reply_markup=client_kb.kb_client)
+				await bot.send_message(message.from_user.id,
+									   text='Нам очень жаль, что так вышло.\n'
+											'Данная проблема возникает из-за использования whitelist из ванильного Minecraft. Скорее всего, ваш ник уже зарегестрирован в системе аккаунтов Mojang, а потому UUID берётся привязанный к нему. Из-за этого при входе на сервер Minecraft сравнивает ваш сгенерированный случайно UUID с UUID, привязанным к аккаунту Mojang. Данная проблема исправляется только вручную в данном исполнении системы whitelist. Наша команда уже ищет достойную и надежную замену данной технологии, которая не будет приводить к таким ошибкам.',
+									   reply_markup=client_kb.kb_client)
 				print(f'Пользователь {message.from_user.id} обратился с проблемой "you are not whitelisted on this server".')
 			else:
 				print(f'Пользователь {message.from_user.id} обратился с неизвестной проблемой "{problem}".')
 				await client_source_alert(message, 'another')
-				await bot.send_message(message.from_user.id, text='Мы сообщили администратору о вашей проблеме, ожидайте.')
+				await bot.send_message(message.from_user.id,
+									   text='Мы сообщили администратору о вашей проблеме, ожидайте.',
+									   reply_markup=client_kb.kb_client)
 		else:
 			print(f'Пользователь {message.from_user.id} не зарегистрировался, но пытался использовать команду проблемы.')
 			await client_start(message)
@@ -136,12 +145,20 @@ async def client_problem(message: types.Message):
 async def client_donate(message: types.Message):
 	try:
 		if await sqlite_db.user_check('approval', 'user_id', message.from_user.id) == 'yes':
-			await bot.send_message(message.from_user.id, text='Мы будем очень благодарны, если вы поддержите наш проект!\n'
-															'Крипто: BEP20(BSC) - USDT - 0x892fda42e19812bb01f8683caad0520c16ac2e0d\n'
-															'СБП: +79136610052')
-			print(f'Пользоатель {message.from_user.id} узнал о том, куда донатить.')
+			await bot.send_message(message.from_user.id,
+								   text='Мы будем очень благодарны, если вы поддержите наш проект!\n'
+										'Крипто: BEP20(BSC) - USDT - 0x892fda42e19812bb01f8683caad0520c16ac2e0d\n'
+										'СБП: +79136610052',
+								   reply_markup=client_kb.kb_client)
+			print(f'Пользователь {message.from_user.id} узнал о том, куда донатить.')
+		else:
+			print(f'Пользователь {message.from_user.id} не зарегистрировался, но пытался использовать команду поддержать.')
+			await client_start(message)
 	except Exception as exception:
 		await client_source_warning(message, exception, 'client_donate')
+
+async def client_any(message: types.Message):
+	await bot.send_message(message.from_user.id, text=f'{message.from_user.first_name}, я вас не понимаю.', reply_markup=client_kb.kb_help_client)
 
 def register_handlers_client(dp: Dispatcher):
 	dp.register_message_handler(client_start, commands=['start', 'help'])
@@ -149,3 +166,4 @@ def register_handlers_client(dp: Dispatcher):
 	dp.register_message_handler(client_server, Text('Статус'))
 	dp.register_message_handler(client_problem, Text(startswith='Проблема'))
 	dp.register_message_handler(client_donate, Text('Поддержать'))
+	dp.register_message_handler(client_any)

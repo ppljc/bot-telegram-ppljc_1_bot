@@ -48,21 +48,24 @@ async def admin_source_activate(message):
 # Проверка на наличие заявок помимо рассматриваемой
 async def admin_source_requests(message, user_id, val):
     await bot.send_message(user_id, text=f'Ваша заявка на регистрацию {val}.')
-    if await sqlite_db.user_list('approval', 'not', 'user_id') != 0:
+    if len(await sqlite_db.user_list('approval', 'not', 'user_id')) != 0:
         amount = len(await sqlite_db.user_list('approval', 'not'))
         await bot.send_message(message.from_user.id, text=f'Количество оставшихся заявок: {amount}.')
-        print(f'Админу {message.from_user.id} сообщено, что количество оставшихся заявок: {amount}.')
+        print(f'Админ {message.from_user.id} оповещён, что количество оставшихся заявок: {amount}.')
         await admin_requests(message)
         return 1
     else:
         await bot.send_message(message.from_user.id, text='Больше заявок не осталось.')
-        print(f'Админу {message.from_user.id} сообщено, что больше заявок не осталось.')
+        print(f'Админ {message.from_user.id} оповещён, что больше заявок не осталось.')
 
 # Оповещение админов о разных событиях
 async def admin_source_alert(user_id, type, admin_id=0, function='', exception=''):
     if type == 'delete':
         for ret in (await sqlite_db.user_list('isadmin', 'yes', 'user_id')):
             if ret[0] != admin_id:
+                await bot.send_message(user_id,
+                                       text='Мы сожалеем, но вы были удалены из базы данных сервера.',
+                                       reply_markup=client_kb.kb_help_client)
                 await bot.send_message(ret[0], text=f'Админ {admin_id} удалил пользователя {user_id}.')
                 print(f'Админ {ret[0]} оповещён о том, что админ {admin_id} удалил пользователя {user_id}.')
     elif type == 'exception':
@@ -80,22 +83,21 @@ async def on_accept_application(query: types.CallbackQuery):
     username = await sqlite_db.user_check('username', 'user_id', query.data[19:])
     try:
         response = await admin_rc.server_whitelist_add(username)
-        if response == 'Player is not whitelisted':
-            print(f'Админ {query.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {username}.')
-            await bot.send_message(query.from_user.id, text='Игрок не находится в вайтлсите.')
-        elif response == f'Removed {username} from the whitelist':
-            print(f'Админ {query.from_user.id} удалил из вайтлиста игрока {username}.')
-            await bot.send_message(query.from_user.id, text=f'Игрок {username} удален из вайтлиста.')
+        if response == 'Player is already whitelisted':
+            await bot.send_message(query.from_user.id, text=f'Игрок {username} уже находится в вайтлсите.')
+            print(f'Админ {query.from_user.id} пытался добавить в вайтлист уже присутствующего там игрока {query.data[19:]} {username}.')
+        elif response == f'Added {username} to the whitelist':
+            await bot.send_message(query.from_user.id, text=f'Игрок {username} добавлен в вайтлист.')
+            print(f'Админ {query.from_user.id} добавил в вайтлист игрока {query.data[19:]} {username}.')
+            await sqlite_db.user_approval('yes', query.data[19:])
+            print(f'Админ {query.from_user.id} одобряет заявку пользователя {query.data[19:]} {username}.')
+            await query.answer(text='Одобрено.', show_alert=True)
+            await admin_source_requests(query, query.data[19:], 'одобрена')
     except Exception as exception:
-        await admin_source_warning(query.from_user.id, exception, 'on_accept_applocation')
-        print(f'Админ {query.from_user.id} обратился с коммандой whitelist add к выключенному серверу.')
+        await admin_source_warning(query.from_user.id, exception, 'on_accept_application')
         await query.answer(text='Сервер оффлайн!', show_alert=True)
-        return
-    await sqlite_db.user_approval('yes', query.data[19:])
-    await query.answer(text='Одобрено.', show_alert=True)
+        print(f'Админ {query.from_user.id} обратился с коммандой whitelist add к выключенному серверу.')
     await bot.delete_message(query.from_user.id, query.message.message_id)
-    await admin_source_requests(query, query.data[19:], 'одобрена')
-    print(f'Пользователь {query.data[19:]} получает одобрение заявки от админа {query.from_user.id}.')
 
 # Отклонение заявки с помощью коллбэка
 async def on_reject_application(query: types.CallbackQuery):
@@ -138,7 +140,9 @@ async def admin_requests(message: types.Message):
             if await sqlite_db.user_check('user_id', 'approval', 'not') != 0:
                 user_id = await sqlite_db.user_check('user_id', 'approval', 'not')
                 username = await sqlite_db.user_check('tgname', 'approval', 'not')
-                await bot.send_message(message.from_user.id, text=f'{user_id} @{username}', reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить', callback_data=f'accept_application {user_id}'), InlineKeyboardButton('Отклонить', callback_data=f'reject_application {user_id}')))
+                await bot.send_message(message.from_user.id, text=f'{user_id} @{username}',
+                                       reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить',callback_data=f'accept_application {user_id}'),
+                                                                               InlineKeyboardButton('Отклонить', callback_data=f'reject_application {user_id}')))
                 print(f'Админ {message.from_user.id} просмотрел заявку пользователя {user_id}.')
             else:
                 await bot.send_message(message.from_user.id, text='Неподтвержденных заявок не осталось.')
@@ -161,21 +165,20 @@ async def admin_removal(message: types.Message):
                 try:
                     response = await admin_rc.server_whitelist_rem(username)
                     if response == 'Player is not whitelisted':
-                        print(f'Админ {message.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {username}.')
+                        print(f'Админ {message.from_user.id} пытался удалить из вайтлиста отсутсвующего там игрока {message.text[21:]} {username}.')
                         await bot.send_message(message.from_user.id, text='Игрок не находится в вайтлисте.')
                     elif response == f'Removed {username} from the whitelist':
-                        print(f'Админ {message.from_user.id} удалил из вайтлиста игрока {username}.')
                         await bot.send_message(message.from_user.id, text=f'Игрок {username} удален из вайтлиста.')
+                        print(f'Админ {message.from_user.id} удалил из вайтлиста игрока {message.text[21:]} {username}.')
+                        await sqlite_db.admin_delete(int(message.text[21:]))
+                        print(f'Админ {message.from_user.id} удаляет из базы данных пользователя {message.text[21:]} {username}.')
+                        await bot.send_message(message.from_user.id, text=f'Пользователь {message.text[21:]} удалён.')
+                        await admin_source_alert(message.text[21:], 'delete', admin_id=message.from_user.id)
                 except Exception as e:
                     print(e)
                     print(f'Админ {message.from_user.id} обратился с коммандой whitelist remove к выключенному серверу.')
-                    await message.answer(text='Сервер оффлайн!', show_alert=True)
-                    return
+                    await message.answer(text='Сервер оффлайн!')
                 await sqlite_db.admin_delete(int(message.text[21:]))
-                await bot.send_message(message.text[21:], text='Мы сожалеем, но вы были удалены из базы данных сервера.', reply_markup=client_kb.kb_help_client)
-                await bot.send_message(message.from_user.id, text=f'Пользователь {message.text[21:]} удалён.')
-                await admin_source_alert(message.text[21:], 'delete', admin_id=message.from_user.id)
-                print(f'Админ {message.from_user.id} удалил пользователя {message.text[21:]}.')
         else:
             await bot.send_message(message.from_user.id, text='Вы не админ!')
             print(f'Пользователь {message.from_user.id} пытался выполнить команду админа "Удалить пользователя".')
@@ -297,7 +300,8 @@ async def admin_players():
 # Кнопка включения мониторинга
 async def admin_startup():
     keyboard = InlineKeyboardMarkup()
-    keyboard.row(InlineKeyboardButton(text='Запустить', callback_data='monitoring on'), InlineKeyboardButton(text='Остановить', callback_data='monitoring off'))
+    keyboard.row(InlineKeyboardButton(text='Запустить', callback_data='monitoring on'),
+                 InlineKeyboardButton(text='Остановить', callback_data='monitoring off'))
     for ret in await sqlite_db.user_list('isadmin', 'yes', 'user_id'):
         await bot.send_message(ret[0], text='Мониторинг игроков.', reply_markup=keyboard)
         print(f'Админ {ret[0]} оповещён о том, что можно включить мониторинг игроков.')
