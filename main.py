@@ -11,7 +11,7 @@ async def on_startup(_):
 	print('Бот вышел в онлайн')
 	if sqlite_db.sql_start():
 		print('Data base connected OK!')
-	await admin.admin__source__on_startup()
+	await admin.admin_source_OnStartUp()
 
 async def on_shotdown(_):
 	pass

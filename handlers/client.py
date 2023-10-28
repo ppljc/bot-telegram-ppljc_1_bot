@@ -12,11 +12,11 @@ from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeybo
 
 # -------------- Handler функции --------------
 # Комманда срабатывающая при старте бота
-async def client__handler__user_start(message: types.Message):
+async def client_handler_UserStart(message: types.Message):
 	try:
-		data = await sqlite_db.user__database__user_check_one(
+		data = await sqlite_db.user_database_UserCheckOne(
 			line='approval',
-			column='user_id',
+			column='id',
 			val=message.from_user.id
 		)
 		if data == 'yes':
@@ -54,76 +54,75 @@ async def client__handler__user_start(message: types.Message):
 		print(f'Пользователь {message.from_user.id} обратился к боту через группу.')
 	await message.delete()
 
+# client_handler_UserRegister
 # Регистрация на сервер
-async def client__handler__user_register(message: types.Message):
+async def client_handler_UserRegister(message: types.Message):
 	try:
-		username = message.text[12:]
+		nickname = message.text[12:]
 		val = 0
-		for ret in username:
+		for ret in nickname:
 			for let in 'abcdefghijklmnopqrstuvwxyz0123456789_':
 				if ret == let:
 					val += 1
 					break
-		if val != len(username):
+		if val != len(nickname):
 			await bot.send_message(
 				chat_id=message.from_user.id,
 				text='Нельзя использовать в никнейме пробелы и любые другие символы, кроме английского алфавита, арабских цифры и нижнего подчеркивания!'
 			)
 			print(f'Пользователь {message.from_user.id} попытался отправить на модерацию заявку, где никнейм содержит запрещенные символы.')
 		else:
-			data = await sqlite_db.user__database__user_check_one(
+			data = await sqlite_db.user_database_UserCheckOne(
 				line='approval',
-				column='user_id',
+				column='id',
 				val=message.from_user.id
 			)
 			if data == 'ban':
-				await client__handler__user_start(message)
+				await client_handler_UserStart(message)
 				print(f'Пользователь {message.from_user.id} попытался отправить на модерацию заявку, хотя она была ранее отклонена.')
 			elif data == 'not':
-				await client__handler__user_start(message)
+				await client_handler_UserStart(message)
 				print(f'Пользователь {message.from_user.id} попытался повторно отправить заявку на модерацию.')
 			elif data == 'yes':
-				await client__handler__user_start(message)
+				await client_handler_UserStart(message)
 				print(f'Пользователь {message.from_user.id} попытался отправить заявку на модерацию, хотя она уже одобрена.')
 			else:
-				await sqlite_db.user__database__user_add(
-					user_id=message.from_user.id,
-					tg_name=message.from_user.username,
-					username=username
+				await sqlite_db.user_database_UserAdd(
+					id=message.from_user.id,
+					username=message.from_user.username,
+					nickname=nickname
 				)
 				await bot.send_message(
 					chat_id=message.from_user.id,
 					text='Ваша заявка отправлена на модерацию',
 					reply_markup=client_kb.kb_help_client
 				)
-				print(f'Пользователь {message.from_user.id} @{message.from_user.username} отправил заявку с ником {username} на модерацию.')
-				await other.other__source__user_alert(
-					user_id=message.from_user.id,
-					username=message.from_user.username,
+				print(f'Пользователь {message.from_user.id} @{message.from_user.username} отправил заявку с ником {nickname} на модерацию.')
+				await other.other_source_UserAlert(
+					id=message.from_user.id,
 					type='request',
-					val=username,
+					filename='client.py',
+					function='client_handler_UserRegister'
 				)
 	except Exception as exception:
-		await other.other__source__user_alert(
-			user_id=message.from_user.id,
-			username=message.from_user.username,
+		await other.other_source_UserAlert(
+			id=message.from_user.id,
 			type='exception',
-			exception=exception,
-			val='client__handler__user_register'
+			filename='client.py',
+			function='client_handler_UserRegister',
+			exception = exception
 		)
 
 # Статус сервера
-async def client__handler__client_server_status(message: types.Message):
+async def client_handler_ClientServerStatus(message: types.Message):
 	try:
-		data = await sqlite_db.user__database__user_check_one(
+		data = await sqlite_db.user_database_UserCheckOne(
 			line='approval',
-			column='user_id',
+			column='id',
 			val=message.from_user.id
 		)
 		if data == 'yes':
-			values = await client_rc.client__rc__server_status(
-				user_id=message.from_user.id
-			)
+			values = await client_rc.client_rc_ServerStatus()
 			tps = values[0]
 			list = values[1]
 			list_users = values[2]
@@ -138,14 +137,14 @@ async def client__handler__client_server_status(message: types.Message):
 			print(f'Пользователь {message.from_user.id} @{message.from_user.username} запросил статус сервера: TPS: {tps}; LIST:{list_users}.')
 		else:
 			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Статус".')
-			await client__handler__user_start(message)
+			await client_handler_UserStart(message)
 	except Exception as exception:
-		if await other_rc.other__rc__server_online():
-			await other.other__source__user_alert(
-				user_id=message.from_user.id,
-				username=message.from_user.username,
+		if await other_rc.other_rc_ServerOnline():
+			await other.other_source_UserAlert(
+				id=message.from_user.id,
 				type='exception',
-				val='client__handler__server_status',
+				filename='client.py',
+				function='client_handler_ClientServerStatus',
 				exception=exception
 			)
 		else:
@@ -155,16 +154,16 @@ async def client__handler__client_server_status(message: types.Message):
 			)
 
 # Приемка проблем
-async def client__handler__client_issue(message: types.Message):
+async def client_handler_ClientIssue(message: types.Message):
 	try:
-		data = await sqlite_db.user__database__user_check_one(
+		data = await sqlite_db.user_database_UserCheckOne(
 			line='approval',
-			column='user_id',
+			column='id',
 			val=message.from_user.id
 		)
 		if data == 'yes':
-			problem = message.text[9:]
-			if problem == '':
+			issue = message.text[9:]
+			if issue == '':
 				await bot.send_message(
 					message.from_user.id,
 					text='Какова суть проблемы?\n'
@@ -175,10 +174,11 @@ async def client__handler__client_issue(message: types.Message):
 				print(f'Пользователь {message.from_user.id} @{message.from_user.username} вызвал неполную команду проблемы.')
 				return
 			elif problem == 'you are not whitelisted on this server':
-				await other.other__source__user_alert(
-					user_id=message.from_user.id,
-					username=message.from_user.username,
-					type='porblem-whitelist'
+				await other.other_source_UserAlert(
+					id=message.from_user.id,
+					type='issue_whitelist',
+					filename='client.py',
+					function='client_handler_ClientIssue'
 				)
 				await bot.send_message(
 					chat_id=message.from_user.id,
@@ -191,37 +191,39 @@ async def client__handler__client_issue(message: types.Message):
 					reply_markup=client_kb.kb_client
 				)
 				print(f'Пользователь {message.from_user.id} @{message.from_user.username} обратился с проблемой "you are not whitelisted on this server".')
-				await other.other__source__user_alert(
-					user_id=message.from_user.id,
-					username=message.from_user.username,
-					type='problem_whitelist',
-					exception=problem
+				await other.other_source_UserAlert(
+					id=message.from_user.id,
+					type='issue_whitelist',
+					filename='client.py',
+					function='client_handler_ClientIssue',
+					exception=problem,
 				)
 			else:
-				await other.other__source__user_alert(
-					user_id=message.from_user.id,
-					username=message.from_user.username,
-					type='another',
-					exception=problem
+				await other.other_source_UserAlert(
+					id=message.from_user.id,
+					type='issue_another',
+					filename='client.py',
+					function='client_handler_ClientIssue',
+					exception = problem,
 				)
 		else:
 			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Проблема".')
-			await client__handler__user_start(message)
+			await client_handler_UserStart(message)
 	except Exception as exception:
-		await other.other__source__user_alert(
-			user_id=message.from_user.id,
-			username=message.from_user.username,
+		await other.other_source_UserAlert(
+			id=message.from_user.id,
 			type='exception',
-			exception=exception,
-			val='client__handler__client_issue'
+			filename='client.py',
+			function='client_handler_ClientIssue',
+			exception = exception,
 		)
 
 # Предложение проспонсировать проект
-async def client__handler__client_sponsor(message: types.Message):
+async def client_handler_ClientSponsor(message: types.Message):
 	try:
-		data = await sqlite_db.user__database__user_check_one(
+		data = await sqlite_db.user_database_UserCheckOne(
 			line='approval',
-			column='user_id',
+			column='id',
 			val=message.from_user.id
 		)
 		if data == 'yes':
@@ -235,26 +237,26 @@ async def client__handler__client_sponsor(message: types.Message):
 			print(f'Пользователь {message.from_user.id} @{message.from_user.username} узнал о том, куда донатить.')
 		else:
 			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Поддержать".')
-			await client__handler__user_start(message)
+			await client_handler_UserStart(message)
 	except Exception as exception:
-		await other.other__source__user_alert(
-			user_id=message.from_user.id,
-			username=message.from_user.username,
+		await other.other_source_UserAlert(
+			id=message.from_user.id,
 			type='exception',
+			filename='client.py',
+			function='client_handler_ClientSponsor',
 			exception=exception,
-			val='client__handler__client_sponsor'
 		)
 
-async def client__change_nickname(message: types.Message):
+async def client_handler_ChangeNickname(message: types.Message):
 	pass
 
-async def client_any(message: types.Message):
+async def client_handler_Any(message: types.Message):
 	await bot.send_message(message.from_user.id, text=f'{message.from_user.first_name}, я вас не понимаю.', reply_markup=client_kb.kb_help_client)
 
 def register_handlers_client(dp: Dispatcher):
-	dp.register_message_handler(client__handler__user_start, commands=['start', 'help'])
-	dp.register_message_handler(client__handler__user_register, Text(startswith='Регистрация'))
-	dp.register_message_handler(client__handler__client_issue, Text(startswith='Проблема'))
-	dp.register_message_handler(client__handler__client_server_status, Text('Статус'))
-	dp.register_message_handler(client__handler__client_sponsor, Text('Поддержать'))
-	dp.register_message_handler(client_any)
+	dp.register_message_handler(client_handler_UserStart, commands=['start', 'help'])
+	dp.register_message_handler(client_handler_UserRegister, Text(startswith='Регистрация'))
+	dp.register_message_handler(client_handler_ClientIssue, Text(startswith='Проблема'))
+	dp.register_message_handler(client_handler_ClientServerStatus, Text('Статус'))
+	dp.register_message_handler(client_handler_ClientSponsor, Text('Поддержать'))
+	dp.register_message_handler(client_handler_Any)
