@@ -305,7 +305,7 @@ async def admin__handler__admin_activate(message: types.Message):
                                    reply_markup=admin_kb.kb_main_admin)
             print(f'Пользователь {message.from_user.id} @{message.from_user.username} получает права админа.')
         else:
-            await client.client__handler__command_start(message)
+            await client.client__handler__user_start(message)
             print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался получить права админа.')
     await message.delete()
 
@@ -531,11 +531,17 @@ async def admin__handler__user_notify(message: types.Message):
                 if response[0].islower():
                     response = response[0].upper() + response[1:]
                 for ret in data:
-                    await bot.send_message(
-                        chat_id=ret[0],
-                        text=f'Важное увдомление!\n'
-                             f'{response}{dot}'
-                    )
+                    try:
+                        await bot.send_message(
+                            chat_id=ret[0],
+                            text=f'Важное увдомление!\n'
+                                 f'{response}{dot}'
+                        )
+                    except:
+                        await bot.send_message(
+                            chat_id=message.from_user.id,
+                            text=f'Пользователь {ret[0]} заблокировал бота и не может получить сообщение.'
+                        )
                 print(f'Админ {message.from_user.id} @{message.from_user.username} выполнил команду "Оповестить" с текстом "{response}"')
         else:
             await admin__source__for_else(

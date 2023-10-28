@@ -1,6 +1,6 @@
 from handlers import other
 from create_bot import bot
-from mcrcons import client_rc
+from mcrcons import client_rc, other_rc
 from keyboards import client_kb
 from data_base import sqlite_db
 
@@ -58,8 +58,9 @@ async def client__handler__user_start(message: types.Message):
 async def client__handler__user_register(message: types.Message):
 	try:
 		username = message.text[12:]
+		username_lower = username.lower()
 		val = 0
-		for ret in username:
+		for ret in username_lower:
 			for let in 'abcdefghijklmnopqrstuvwxyz0123456789_':
 				if ret == let:
 					val += 1
