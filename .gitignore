@@ -3,6 +3,7 @@
 *config.py
 *Lib
 *Scripts
+/venv
 *__pycache__
 *pyvenv.cfg
 *server53.db

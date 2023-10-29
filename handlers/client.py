@@ -3,10 +3,21 @@ from create_bot import bot
 from mcrcons import client_rc, other_rc
 from keyboards import client_kb
 from data_base import sqlite_db
+from imagemaps.imagemaps import *
 
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import BoundFilter
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram import types, Dispatcher
 from aiogram.dispatcher.filters import Text
 from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+
+
+#
+class FSMImageMapsUpload(StatesGroup):
+	file = State()
+	format = State()
+
 
 # -------------- Вспомогательные функции --------------
 
@@ -246,16 +257,115 @@ async def client__handler__client_sponsor(message: types.Message):
 			val='client__handler__client_sponsor'
 		)
 
+
+# Добавление карты на сервер | Запуск машины состояний
+async def client__handler__client_imagemap_upload_start(message: types.Message, state: FSMContext):
+	try:
+		data = await sqlite_db.user__database__user_check_one(
+			line='approval',
+			column='user_id',
+			val=message.from_user.id
+		)
+		if data == 'yes':
+			await bot.send_message(
+				chat_id=message.from_user.id,
+				text='Добавление карты на сервер 🖼️'
+					 '\n\nЕсли хотите добавить картинку на сервер в виде карты, отправьте её в виде файла (.png) с подписью в качестве названия.'
+					 '\n\nЛучше всего будут выглядеть картинки с размером кратным 128px'
+					 '\nCоотношение сторон: 1:1, 1:2, 2:3 и тп',
+				reply_markup=client_kb.kb_client_cancel
+			)
+			await FSMImageMapsUpload.file.set()
+			print(f'Пользователь {message.from_user.id} @{message.from_user.username} собирается добавить карту на сервер.')
+		else:
+			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Добавить карту".')
+			await client__handler__user_start(message)
+	except Exception as exception:
+		await other.other__source__user_alert(
+			user_id=message.from_user.id,
+			username=message.from_user.username,
+			type='exception',
+			exception=exception,
+			val='client__handler__client_imagemap_upload_start'
+		)
+
+# Добавление карты на сервер | Загрузка файла
+async def client__handler__client_imagemap_upload_file(message: types.Message, state: FSMContext):
+	#try:
+	if message.caption != None and (message.content_type == 'photo' or message.content_type == 'document'):
+		async with state.proxy() as data:
+			if message.content_type == 'photo':
+				await message.photo[-1].download(f"C:\\Users\\stepa\\Documents\\Repos\\ES53BOT\\imagemaps\\maps\\{message.caption}.png")
+			else:
+				await message.document.download(f"C:\\Users\\stepa\\Documents\\Repos\\ES53BOT\\imagemaps\\maps\\{message.caption}.png")
+			data['file'] = message.caption
+			ratio = format_map(message.caption) 
+			await bot.send_message(
+				chat_id=message.from_user.id,
+				text=f'Карта {message.caption} добавлена с соотношением сторон {ratio} ✅',
+				reply_markup=client_kb.kb_client_cancel
+				)
+		await state.finish()
+	else:
+		await bot.send_message(
+			chat_id=message.from_user.id,
+			text='Отправьте файл снова, с подписанным названием!',
+			reply_markup=client_kb.kb_client_cancel
+		)
+		await FSMImageMapsUpload.file.set()
+
+	
+# Отмена добавления карты
+async def client__handler__client_imagemap_upload_cancel(message: types.Message, state: FSMContext):
+	await state.finish()
+	await message.delete()
+	await bot.send_message(
+				chat_id=message.from_user.id,
+				text='Добавление карты отменено',
+				reply_markup=client_kb.kb_client
+			)
+	print(f'Пользователь {message.from_user.id} @{message.from_user.username} передумал добавлять карту на сервер.')
+
+## Добавление карты на сервер | Выбор размера
+#async def client__handler__client_imagemap_upload_format(message: types.Message, state: FSMContext):
+#	try:
+#		if len(message.caption) != 0 and (message.content_type == 'photo' or message.content_type == 'document'):
+#			async with state.proxy() as data:
+#				data['format']
+#			await FSMImageMapsUpload.next()
+#		else:
+#			await bot.send_message(
+#				chat_id=message.from_user.id,
+#				text='Отправьте файл снова, с подписанным названием!',
+#				reply_markup=client_kb.kb_client_cancel
+#			)
+#			await FSMImageMapsUpload.file.set()
+#	except Exception as exception:
+#		await other.other__source__user_alert(
+#			user_id=message.from_user.id,
+#			username=message.from_user.username,
+#			type='exception',
+#			exception=exception,
+#			val='client__handler__client_imagemap_upload_file'
+#		)
+	
+
 async def client__change_nickname(message: types.Message):
 	pass
 
-async def client_any(message: types.Message):
+async def client_any(message: types.File):
 	await bot.send_message(message.from_user.id, text=f'{message.from_user.first_name}, я вас не понимаю.', reply_markup=client_kb.kb_help_client)
 
 def register_handlers_client(dp: Dispatcher):
 	dp.register_message_handler(client__handler__user_start, commands=['start', 'help'])
 	dp.register_message_handler(client__handler__user_register, Text(startswith='Регистрация'))
 	dp.register_message_handler(client__handler__client_issue, Text(startswith='Проблема'))
-	dp.register_message_handler(client__handler__client_server_status, Text('Статус'))
-	dp.register_message_handler(client__handler__client_sponsor, Text('Поддержать'))
+	dp.register_message_handler(client__handler__client_server_status, Text(startswith='Статус'))
+	dp.register_message_handler(client__handler__client_sponsor, Text(startswith='Поддержать'))
+
+	dp.register_message_handler(client__handler__client_imagemap_upload_start, Text(startswith='Добавить карту'), state='*')
+	dp.register_message_handler(client__handler__client_imagemap_upload_file, content_types = ['document', 'photo'], state=FSMImageMapsUpload.file)
+	dp.register_message_handler(client__handler__client_imagemap_upload_cancel, Text('Отмена'), state=FSMImageMapsUpload.file)
+	#dp.register_message_handler(client__handler__client_imagemap_upload_format, state=FSMImageMapsUpload.format)
+
 	dp.register_message_handler(client_any)
