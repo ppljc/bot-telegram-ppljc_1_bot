@@ -298,14 +298,19 @@ async def client__handler__client_imagemap_upload_file(message: types.Message, s
 				await message.photo[-1].download(f"C:\\Users\\stepa\\Documents\\Repos\\ES53BOT\\imagemaps\\maps\\{message.caption}.png")
 			else:
 				await message.document.download(f"C:\\Users\\stepa\\Documents\\Repos\\ES53BOT\\imagemaps\\maps\\{message.caption}.png")
-			data['file'] = message.caption
-			ratio = format_map(message.caption) 
+			data['file'] = format_map(message.caption) 
+			ratio = data['file'][1][1]
 			await bot.send_message(
 				chat_id=message.from_user.id,
-				text=f'Карта {message.caption} добавлена с соотношением сторон {ratio} ✅',
+				text=f'Соотношение сторон карты {message.caption} определено: {ratio} ✅',
 				reply_markup=client_kb.kb_client_cancel
 				)
-		await state.finish()
+			await bot.send_message(
+				chat_id=message.from_user.id,
+				text=f'Выберите размер карты (в блоках) 📐',
+				reply_markup=client_kb.generate_inline_kb(amount=4, txt_dict=data['file'][1][2], row_width=4)
+			)
+		await FSMImageMapsUpload.next()
 	else:
 		await bot.send_message(
 			chat_id=message.from_user.id,
@@ -326,28 +331,27 @@ async def client__handler__client_imagemap_upload_cancel(message: types.Message,
 			)
 	print(f'Пользователь {message.from_user.id} @{message.from_user.username} передумал добавлять карту на сервер.')
 
-## Добавление карты на сервер | Выбор размера
-#async def client__handler__client_imagemap_upload_format(message: types.Message, state: FSMContext):
-#	try:
-#		if len(message.caption) != 0 and (message.content_type == 'photo' or message.content_type == 'document'):
-#			async with state.proxy() as data:
-#				data['format']
-#			await FSMImageMapsUpload.next()
-#		else:
-#			await bot.send_message(
-#				chat_id=message.from_user.id,
-#				text='Отправьте файл снова, с подписанным названием!',
-#				reply_markup=client_kb.kb_client_cancel
-#			)
-#			await FSMImageMapsUpload.file.set()
-#	except Exception as exception:
-#		await other.other__source__user_alert(
-#			user_id=message.from_user.id,
-#			username=message.from_user.username,
-#			type='exception',
-#			exception=exception,
-#			val='client__handler__client_imagemap_upload_file'
-#		)
+# Добавление карты на сервер | Выбор размера
+async def client__handler__client_imagemap_upload_format(callback: types.CallbackQuery, state: FSMContext):
+	#try:
+	async with state.proxy() as data:
+		name = data['file'][0]
+		resize_map(name=name, value=int(callback.data)+1)
+		await bot.send_message(
+			chat_id=callback.from_user.id,
+			text=f'Карта {name} добавлена на сервер ✅',
+			reply_markup=client_kb.kb_client
+		)
+	await callback.answer()
+	await state.finish()
+	#except Exception as exception:
+	#	await other.other__source__user_alert(
+	#		user_id=callback.from_user.id,
+	#		username=callback.from_user.username,
+	#		type='exception',
+	#		exception=exception,
+	#		val='client__handler__client_imagemap_upload_format'
+	#	)
 	
 
 async def client__change_nickname(message: types.Message):
@@ -365,7 +369,7 @@ def register_handlers_client(dp: Dispatcher):
 
 	dp.register_message_handler(client__handler__client_imagemap_upload_start, Text(startswith='Добавить карту'), state='*')
 	dp.register_message_handler(client__handler__client_imagemap_upload_file, content_types = ['document', 'photo'], state=FSMImageMapsUpload.file)
-	dp.register_message_handler(client__handler__client_imagemap_upload_cancel, Text('Отмена'), state=FSMImageMapsUpload.file)
-	#dp.register_message_handler(client__handler__client_imagemap_upload_format, state=FSMImageMapsUpload.format)
+	dp.register_message_handler(client__handler__client_imagemap_upload_cancel, Text('Отмена'), state='*')
+	dp.register_callback_query_handler(client__handler__client_imagemap_upload_format, Text(['0','1','2','3']), state=FSMImageMapsUpload.format)
 
 	dp.register_message_handler(client_any)
