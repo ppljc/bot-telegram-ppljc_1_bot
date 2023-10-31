@@ -137,8 +137,9 @@ async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
             await other.other_source_UserAlert(
                 id=query.data[19:],
                 filename='admin.py',
-                type='approval',
-                function='admin_callback_ApplicationAccept'
+                type='approval_yes',
+                function='admin_callback_ApplicationAccept',
+                exception=''
             )
             data = await sqlite_db.user_database_UserCheckAll(
                 column='approval',
@@ -151,7 +152,7 @@ async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
                     text=f'Количество оставшихся заявок: {amount}.'
                 )
                 print(f'Админ {query.from_user.id} оповещён, что количество оставшихся заявок: {amount}.')
-                await admin__handler__admin_requests(query)
+                await admin_handler_AdminRequests(query)
             else:
                 await bot.send_message(
                     chat_id=query.from_user.id,
@@ -173,8 +174,7 @@ async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
                 exception=exception
             )
         else:
-            print(
-                f'Админ {query.from_user.id} {query.from_user.username} обратился с коммандой "whitelist add" к выключенному серверу.')
+            print(f'Админ {query.from_user.id} {query.from_user.username} обратился с коммандой "whitelist add" к выключенному серверу.')
             await query.answer(
                 text='Сервер оффлайн!',
                 show_alert=True
@@ -196,11 +196,12 @@ async def admin_callback_ApplicationReject(query: types.CallbackQuery):
     )
     await other.other_source_UserAlert(
         id=query.data[19:],
-        type='approval',
+        type='approval_ban',
         filename='admin.py',
-        function='admin_callback_ApplicationReject'
+        function='admin_callback_ApplicationReject',
+        exception=query,
+        admin_id=query.from_user.id
     )
-    print(f'Пользователь {query.data[19:]} получает отклонение заявки от админа {query.from_user.id}.')
     await bot.delete_message(
         chat_id=query.from_user.id,
         message_id=query.message.message_id
@@ -283,51 +284,57 @@ async def admin_callback_PlayersMonitoringOn(query: types.CallbackQuery):
 # Проверка на присутствие админа в базе данных и добавление его туда в случае отстутствия
 async def admin_handler_AdminActivation(message: types.Message):
     global ID
-    data = await sqlite_db.user_database_UserCheckOne(
-        line='*',
-        column='isadmin',
-        val=message.from_user.id
-    )
-    if data[5] == 'yes':
-        ID = message.from_user.id
-        await bot.send_message(
-            chat_id=message.from_user.id,
-            text='Админ мод включен.\n'
-                 'Что будем делать?',
-            reply_markup=admin_kb.kb_main_admin
+    if message.chat.id == 832082275 or message.chat.id == 648541799:
+        data = await sqlite_db.user_database_UserCheckOne(
+            line='*',
+            column='isadmin',
+            val=message.from_user.id
         )
-        print(f'Пользователь {message.from_user.id} {message.from_user.username} входит в режим админа.')
-    else:
-        if data[4] == 'yes':
-            await sqlite_db.admin_database_AdminAdd(id=message.from_user.id)
+        if data[5] == 'yes':
             ID = message.from_user.id
             await bot.send_message(
                 chat_id=message.from_user.id,
-                text='Вы стали админом.\n'
+                text='Админ мод включен.\n'
                      'Что будем делать?',
-                reply_markup=admin_kb.kb_main_admi)
-            data_op = await admin_rc.admin_rc_Op(
-                nickname=data[3],
-                type=''
+                reply_markup=admin_kb.kb_main_admin
             )
-            if data_op == 'Nothing changed. The player already is an operator':
-                await bot.send_message(
-                    chat_id=message.from_user.id,
-                    text='Вы уже являетесь оператором сервера.',
-                    reply_markup=admin_kb.kb_main_admin
-                )
-                print(f'Пользователь {message.from_user.id} {data[3]} попытался стать оператором сервера, хоть им уже является.')
-            elif data_op == f'Made {data[3]} a server operator':
-                await bot.send_message(
-                    chat_id=message.from_user.id,
-                    text='Теперь вы являетесь оператором сервера.',
-                    reply_markup=admin_kb.kb_main_admin
-                )
-                print(f'Пользователь {message.from_user.id} {data[3]} стал оператором сервера.')
-            print(f'Пользователь {message.from_user.id} {message.from_user.username} получает права админа.')
+            print(f'Пользователь {message.from_user.id} {message.from_user.username} входит в режим админа.')
         else:
-            await client.client__handler__command_start(message)
-            print(f'Пользователь {message.from_user.id} {message.from_user.username} не зарегистрировался, но пытался получить права админа.')
+            if data[4] == 'yes':
+                await sqlite_db.admin_database_AdminAdd(id=message.from_user.id)
+                ID = message.from_user.id
+                await bot.send_message(
+                    chat_id=message.from_user.id,
+                    text='Вы стали админом.\n'
+                         'Что будем делать?',
+                    reply_markup=admin_kb.kb_main_admi)
+                data_op = await admin_rc.admin_rc_Op(
+                    nickname=data[3],
+                    type=''
+                )
+                if data_op == 'Nothing changed. The player already is an operator':
+                    await bot.send_message(
+                        chat_id=message.from_user.id,
+                        text='Вы уже являетесь оператором сервера.',
+                        reply_markup=admin_kb.kb_main_admin
+                    )
+                    print(f'Пользователь {message.from_user.id} {data[3]} попытался стать оператором сервера, хоть им уже является.')
+                elif data_op == f'Made {data[3]} a server operator':
+                    await bot.send_message(
+                        chat_id=message.from_user.id,
+                        text='Теперь вы являетесь оператором сервера.',
+                        reply_markup=admin_kb.kb_main_admin
+                    )
+                    print(f'Пользователь {message.from_user.id} {data[3]} стал оператором сервера.')
+                print(f'Пользователь {message.from_user.id} {message.from_user.username} получает права админа.')
+            else:
+                await client.client_handler_UserStart(message)
+                print(f'Пользователь {message.from_user.id} {message.from_user.username} не зарегистрировался, но пытался получить права админа.')
+    else:
+        await bot.send_message(
+            chat_id=message.chat.id,
+            text='Ага, пососите)'
+        )
     await message.delete()
 
 async def admin_handler_AdminRequests(message: types.Message):
@@ -415,6 +422,7 @@ async def admin_handler_UserRemove(message: types.Message):
                             type='user_delete',
                             filename='admin.py',
                             function='admin_handler_UserRemove',
+                            exception='',
                             admin_id=message.from_user.id
                         )
                     else:
@@ -554,7 +562,7 @@ async def admin_handler_UserNotify(message: types.Message):
                 for ret in data:
                     await bot.send_message(
                         chat_id=ret[0],
-                        text=f'Важное увдомление!\n'
+                        text=f'Важное увeдомление!\n'
                              f'{response}{dot}'
                     )
                 print(f'Админ {message.from_user.id} {message.from_user.username} выполнил команду "Оповестить" с текстом "{response}"')
@@ -596,7 +604,7 @@ def register_handlers_admin(dp: Dispatcher):
     dp.register_callback_query_handler(admin_callback_ApplicationAccept, lambda x: x.data.startswith('accept_application'))
     dp.register_callback_query_handler(admin_callback_ApplicationReject, lambda x: x.data.startswith('reject_application'))
     dp.register_callback_query_handler(admin_callback_PlayersMonitoringOn, lambda x: x.data.startswith('monitoring'))
-    dp.register_message_handler(admin_handler_AdminActivation, commands=['Admin'], is_chat_admin=True)
+    dp.register_message_handler(admin_handler_AdminActivation, commands=['Admin'], is_chat_admin=True, )
     dp.register_message_handler(admin_handler_UserListBanned, Text('ЧС'))
     dp.register_message_handler(admin_handler_PlayersMonitoring, Text('Мониторинг'))
     dp.register_message_handler(admin_handler_AdminRequests, Text('Просмотреть заявки'))
