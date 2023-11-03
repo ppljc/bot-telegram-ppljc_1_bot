@@ -1,13 +1,14 @@
 from mcrcon import MCRcon
+from config import localhost, password
 
 async def admin_rc_Whitelist(nickname, type):
-    with MCRcon('localhost', 'password') as mcr:
+    with MCRcon(localhost, password) as mcr:
         response = mcr.command(f'whitelist {type} {nickname}')
     return response
 
 # Просмотр списка игроков
 async def admin_rc_ListPlayers():
-    with MCRcon('localhost', 'password') as mcr:
+    with MCRcon(localhost, password) as mcr:
         list = mcr.command('list')
         list_split = list.split()
         list_slice = list_split[10:]
@@ -23,7 +24,7 @@ async def admin_rc_ListPlayers():
             return list_slice
 
 async def admin_rc_Op(nickname, type):
-    with MCRcon('localhost', 'password') as mcr:
+    with MCRcon(localhost, password) as mcr:
         response = mcr.command(f'{type}op {nickname}')
     return response
     # Made ppljc a server operator

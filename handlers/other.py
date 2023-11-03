@@ -5,7 +5,7 @@ import datetime
 
 # -------------- Импорт локальных функций --------------
 from handlers import client
-from mcrcons import admin_rc
+from mcrcons import admin_rc, client_rc, other_rc
 from create_bot import bot, dp
 from data_base import sqlite_db
 from keyboards import admin_kb, client_kb
@@ -13,7 +13,7 @@ from keyboards import admin_kb, client_kb
 # -------------- Импорт модулей Aiogram --------------
 from aiogram import types, Dispatcher
 from aiogram.dispatcher.filters import Text
-from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 
 # -------------- Вспомогательные функции --------------
 async def other_source_UserAlert(id, type, filename, function, exception, admin_id=0):
@@ -24,7 +24,7 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         column='isadmin',
         val='yes'
     )
-
+    message = ''
     if type == 'user_delete':
         await other_source_Logging(
             id=admin_id,
@@ -36,19 +36,19 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         response_message = ''
         response_logging = ''
         for ret in list_admins:
-            if ret != admin_id:
+            if ret[0] != admin_id:
                 response_message = f'{data_admin} удалил'
                 response_logging = response_message
-            elif ret == admin_id:
+            elif ret[0] == admin_id:
                 response_message = 'Вы удалили'
                 response_logging = 'он удалил'
             message = f'пользователя {data} из БД сервера.'
             await bot.send_message(
-                chat_id=ret,
+                chat_id=ret[0],
                 text=f'{response_message} {message}'
             )
             await other_source_Logging(
-                id=ret,
+                id=ret[0],
                 filename=filename,
                 function=function,
                 exception='',
@@ -97,19 +97,19 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         response_message = ''
         response_logging = ''
         for ret in list_admins:
-            if ret != id:
+            if ret[0] != id:
                 response_message = f'{data} получил'
                 response_logging = response_message
-            elif ret == id:
+            elif ret[0] == id:
                 response_message = 'Вы получили'
                 response_logging = 'он получил'
             message = f'ошибку "{exception}" в файле "{filename}" в функции "{function}".'
             await bot.send_message(
-                chat_id=ret,
+                chat_id=ret[0],
                 text=f'{response_message} {message}'
             )
             await other_source_Logging(
-                id=id,
+                id=ret[0],
                 filename=filename,
                 function=function,
                 exception='',
@@ -131,17 +131,27 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         )
         for ret in data_admin:
             message = f'на регистрацию от пользователя {data}.'
-            await bot.send_message(
-                chat_id=ret,
-                text=f'Новая заявка {message}'
-            )
-            await other_source_Logging(
-                id=ret,
-                filename=filename,
-                function=function,
-                exception='',
-                content=f'Оповещён о новой заявке {message}'
-            )
+            try:
+                await bot.send_message(
+                    chat_id=ret[0],
+                    text=f'Новая заявка {message}',
+                    reply_markup=client_kb.kb_client
+                )
+                await other_source_Logging(
+                    id=ret[0],
+                    filename=filename,
+                    function=function,
+                    exception='',
+                    content=f'Оповещён о новой заявке {message}'
+                )
+            except:
+                await other_source_Logging(
+                    id=ret[0],
+                    filename=filename,
+                    function=function,
+                    exception='Blocked bot.',
+                    content=''
+                )
 
     elif type[:8] == 'approval':
         value_message = ''
@@ -169,20 +179,21 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         response_logging = ''
         for ret in list_admins:
             message = f'{data} получил {value_logging} заявки от'
-            if ret != admin_id:
+            if ret[0] != admin_id:
                 await bot.send_message(
-                    chat_id=ret,
-                    text=f'{message} {data_admin}.'
+                    chat_id=ret[0],
+                    text=f'{message} {data_admin}.',
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 response_logging = data_admin
-            elif ret == admin_id:
+            elif ret[0] == admin_id:
                 await exception.answer(
                     text=value_query,
                     show_alert=True
                 )
                 response_logging = 'него'
             await other_source_Logging(
-                id=ret,
+                id=ret[0],
                 filename=filename,
                 function=function,
                 exception='',
@@ -204,13 +215,15 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
                 reply_markup=client_kb.kb_client
             )
         for ret in list_admins:
+            username = data['username']
             message = f'{data} обратился с проблемой "{issue}".'
             await bot.send_message(
-                chat_id=ret,
-                text=message
+                chat_id=ret[0],
+                text=message,
+                parse_mode=ParseMode.MARKDOWN
             )
             await other_source_Logging(
-                id=ret,
+                id=ret[0],
                 filename=filename,
                 function=function,
                 exception='',
@@ -218,8 +231,81 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
             )
 
     elif type == 'no_register':
-        if data['approval'] == 'not':
+        approval = data['approval']
+        if approval != '':
+            if approval == 'yes':
+                message = 'was registered'
+            elif approval == 'not':
+                message = 'not approved yet'
+            elif approval == 'ban':
+                message = 'was banned'
+            if exception:
+                message_previous = 'use this function'
+            else:
+                message_previous = 'register'
+            await other_source_Logging(
+                id=id,
+                filename=filename,
+                function=function,
+                exception=f'Tried to {message_previous}, but {message}.',
+                content=''
+            )
+        else:
+            return False
 
+    elif type == 'server_status':
+        values = await client_rc.client_rc_ServerStatus()
+        tps = values[0]
+        list = values[1]
+        list_users = values[2]
+        for ret in list_admins:
+            if id == ret[0]:
+                message = f'Игроки: {list_users}\n'
+        await bot.send_message(
+            chat_id=id,
+            text=f'Текущее состояние сервера:\n'
+		         f' Число игроков: {list}\n'
+                 f' {message}'
+				 f' TPS: {tps}\n\n'
+				 f' Постояный IP сервера: mc.server53.ru',
+			reply_markup=client_kb.kb_client
+        )
+        await other_source_Logging(
+            id=id,
+            filename=filename,
+            function=function,
+            exception='',
+            content=f'Запросил статус сервера TPS: {tps}; LIST: {list_users}.'
+        )
+
+    elif type == 'server_offline':
+        await bot.send_message(
+            chat_id=id,
+            text='Сервер оффлайн.'
+        )
+        await other_source_Logging(
+            id=id,
+            filename=filename,
+            function=function,
+            exception='Server is offline.',
+            content=''
+        )
+        for ret in list_admins:
+            if ret[0] != id:
+                message = data
+                await bot.send_message(
+                    chat_id=ret[0],
+                    text=f'{message} обнаружил, что сервер оффлайн при вызове функции "{function}".'
+                )
+            elif ret[0] == id:
+                message = 'он'
+            await other_source_Logging(
+                id=ret[0],
+                filename=filename,
+                function=function,
+                exception='',
+                content=f'Оповещён, что {message} обнаружил, что сервер оффлайн.'
+            )
 
 async def other_source_UserData(id):
     response = await sqlite_db.user_database_UserCheckOne(
@@ -227,18 +313,17 @@ async def other_source_UserData(id):
         column='id',
         val=id
     )
+    if not response:
+        response = ['', id, '', '', '', '']
     data = {
         'date': response[0],
-        'id': id,
+        'id': response[1],
         'username': response[2],
         'nickname': response[3],
         'approval': response[4],
-        'isadmin': response[5],
+        'isadmin': response[5]
     }
-    if response:
-        return data
-    else:
-        return False
+    return data
 
 async def other_source_Logging(id, filename, function, exception, content):
     '''

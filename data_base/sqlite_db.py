@@ -1,3 +1,5 @@
+from handlers import other
+
 # -------------- Импорт функций --------------
 import sqlite3
 import datetime
@@ -7,10 +9,12 @@ import datetime
 db_file = "server53.db"
 
 # -------------- Функция запуска базы данных --------------
-# Создаем таблицу пользователей в базе данных
-''' Открываем базу данных, или при отсутствии её создаем со столбцами: дата, Telegram ID, имя пользователя для Minecraft,
-состояния заявки на регистрацию и принадлежность к админам. '''
 def sql_start():
+    '''
+    Открываем базу данных, или при отсутствии её создаем со столбцами: дата, Telegram ID, имя пользователя для Minecraft,
+    состояния заявки на регистрацию и принадлежность к админам.
+    :return:
+    '''
     global base, cur
     base = sqlite3.connect(db_file)
     cur = base.cursor()
@@ -31,7 +35,7 @@ async def user_database_UserAdd(id, username, nickname):
     '''
     try:
         date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute('INSERT INTO users (date, id, username, nickname, approval, isadmin) VALUES (?, ?, ?, ?, ?, ?)', (date, id, f'@{username}', nickname, 'not', 'not'))
+        cur.execute('INSERT INTO users (date, id, username, nickname, approval, isadmin) VALUES (?, ?, ?, ?, ?, ?)', (date, id, username, nickname, 'not', 'not'))
         base.commit()
     except:
         return 0
@@ -65,7 +69,7 @@ async def user_database_UserCheckOne(line, column, val, type=0):
     :return: line with numder type
     '''
     try:
-        return cur.execute(f'SELECT {line} FROM users WHERE {column} = ?', (val,)).fetchone()[type]
+        return cur.execute(f'SELECT {line} FROM users WHERE {column} = ?', (val,)).fetchall()[type]
     except:
         return 0
 
@@ -93,6 +97,36 @@ async def user_database_UserSetApproval(id, val):
     try:
         cur.execute('UPDATE users SET approval = ? WHERE id = ?', (val, id,))
         base.commit()
+    except:
+        return 0
+
+async def user_database_UsernameUpdate(message, filename, function):
+    try:
+        if message.from_user.username:
+            username = f'[{message.from_user.first_name}](https://t.me/{message.from_user.username})'
+        else:
+            username = f'[{message.from_user.first_name}](tg://user?id={message.from_user.id})'
+        data = await user_database_UserCheckOne(
+            line='username',
+            column='id',
+            val=message.from_user.id
+        )
+        data = data[0]
+        if data != username:
+            val_ret = 0
+            for ret in nickname:
+                if ret == '_':
+                    nickname = nickname[:val_ret] + '\_' + nickname[(val_ret + 1):]
+                val_ret += 1
+            cur.execute('UPDATE users SET username = ? WHERE id = ?', (username, message.from_user.id,))
+            base.commit()
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function=function,
+                exception='',
+                content=f'Обновил username с "{data}" на "{username}".'
+            )
     except:
         return 0
 

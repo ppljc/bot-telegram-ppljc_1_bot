@@ -17,8 +17,17 @@ filename = 'client.py'
 
 
 # -------------- Handler функции --------------
-# Комманда срабатывающая при старте бота
 async def client_handler_UserStart(message: types.Message):
+	'''
+	The command is triggered when the '/start' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_UserStart'
+	)
 	try:
 		data = await other.other_source_UserData(id=message.from_user.id)
 		if data['approval'] == 'yes':
@@ -39,7 +48,7 @@ async def client_handler_UserStart(message: types.Message):
 				text='Ваша заявка отклонена. Вы можете обратиться по этому поводу к Васгену.',
 				reply_markup=ReplyKeyboardRemove()
 			)
-		elif data['approval'] == 0:
+		elif data['approval'] == '':
 			await bot.send_message(
 				chat_id=message.from_user.id,
 				text='Привет. Это ассистент Сервера53.\n' \
@@ -75,15 +84,29 @@ async def client_handler_UserStart(message: types.Message):
 	await message.delete()
 
 async def client_handler_UserRegister(message: types.Message):
+	'''
+	The command is triggered when the 'Регистрация никнейм_из_майнкрафта' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_UserRegister'
+	)
 	try:
 		nickname = message.text[12:]
-		val = 0
+		val_let = 0
+		val_ret = 0
 		for ret in nickname:
 			for let in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789_':
 				if ret == let:
-					val += 1
+					if ret == '_':
+						nickname = nickname[:val_ret] + '\_' + nickname[(val_ret + 1):]
+					val_let += 1
 					break
-		if val != len(nickname):
+			val_ret += 1
+		if val_let != len(nickname):
 			await bot.send_message(
 				chat_id=message.from_user.id,
 				text='Нельзя использовать в никнейме пробелы и любые другие символы, кроме английского алфавита, арабских цифры и нижнего подчеркивания!'
@@ -96,24 +119,23 @@ async def client_handler_UserRegister(message: types.Message):
 				content=''
 			)
 		else:
-			data = await sqlite_db.user_database_UserCheckOne(
-				line='approval',
-				column='id',
-				val=message.from_user.id
+			request = await other.other_source_UserAlert(
+				id=message.from_user.id,
+				type='no_register',
+				filename=filename,
+				function='client_handler_UserRegister',
+				exception=''
 			)
-			if data == 'ban':
+			if request:
 				await client_handler_UserStart(message)
-				print(f'Пользователь {message.from_user.id} попытался отправить на модерацию заявку, хотя она была ранее отклонена.')
-			elif data == 'not':
-				await client_handler_UserStart(message)
-				print(f'Пользователь {message.from_user.id} попытался повторно отправить заявку на модерацию.')
-			elif data == 'yes':
-				await client_handler_UserStart(message)
-				print(f'Пользователь {message.from_user.id} попытался отправить заявку на модерацию, хотя она уже одобрена.')
 			else:
+				if message.from_user.username:
+					username = f'[{message.from_user.first_name}](https://t.me/{message.from_user.username})'
+				else:
+					username = f'[{message.from_user.first_name}](tg://user?id={message.from_user.id})'
 				await sqlite_db.user_database_UserAdd(
 					id=message.from_user.id,
-					username=message.from_user.username,
+					username=username,
 					nickname=nickname
 				)
 				await other.other_source_UserAlert(
@@ -123,7 +145,6 @@ async def client_handler_UserRegister(message: types.Message):
 					function='client_handler_UserRegister',
 					exception=''
 				)
-			message
 	except Exception as exception:
 		await other.other_source_UserAlert(
 			id=message.from_user.id,
@@ -133,33 +154,39 @@ async def client_handler_UserRegister(message: types.Message):
 			exception=exception
 		)
 
-# Статус сервера
 async def client_handler_ClientServerStatus(message: types.Message):
+	'''
+	The command is triggered when the 'Статус' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_ClientServerStatus'
+	)
 	try:
-		data = await sqlite_db.user_database_UserCheckOne(
-			line='approval',
-			column='id',
-			val=message.from_user.id
-		)
-		if data == 'yes':
-			values = await client_rc.client_rc_ServerStatus()
-			tps = values[0]
-			list = values[1]
-			list_users = values[2]
-			await bot.send_message(
-				chat_id=message.from_user.id,
-			    text=f'Текущее состояние сервера:\n'
-					 f' Число игроков: {list}\n'
-					 f' TPS: {tps}\n\n'
-					 f' Постояный IP сервера: 92.124.132.235',
-				reply_markup=client_kb.kb_client
+		data = await other.other_source_UserData(id=message.from_user.id)
+		if data['approval'] == 'yes':
+			await other.other_source_UserAlert(
+				id=message.from_user.id,
+				type='server_status',
+				filename=filename,
+				function='client_handler_ClientServerStatus',
+				exception=''
 			)
-			print(f'Пользователь {message.from_user.id} @{message.from_user.username} запросил статус сервера: TPS: {tps}; LIST:{list_users}.')
 		else:
-			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Статус".')
+			await other.other_source_UserAlert(
+				id=message.from_user.id,
+				type='no_register',
+				filename=filename,
+				function='client_handler_ClientServerStatus',
+				exception=True
+			)
 			await client_handler_UserStart(message)
 	except Exception as exception:
-		if await other_rc.other_rc_ServerOnline():
+		online = await other_rc.other_rc_ServerOnline()
+		if online:
 			await other.other_source_UserAlert(
 				id=message.from_user.id,
 				type='exception',
@@ -168,20 +195,28 @@ async def client_handler_ClientServerStatus(message: types.Message):
 				exception=exception
 			)
 		else:
-			print(f'Пользователь {message.from_user.id} @{message.from_user.username} обратился с коммандой "Статус" к выключенному серверу.')
-			await message.answer(
-				text='Сервер оффлайн!'
+			await other.other_source_UserAlert(
+				id=message.from_user.id,
+				type='server_offline',
+				filename=filename,
+				function='client_handler_ClientServerStatus',
+				exception=''
 			)
 
-# Приемка проблем
 async def client_handler_ClientIssue(message: types.Message):
+	'''
+	The command is triggered when the 'Проблема' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_ClientIssue'
+	)
 	try:
-		data = await sqlite_db.user_database_UserCheckOne(
-			line='approval',
-			column='id',
-			val=message.from_user.id
-		)
-		if data == 'yes':
+		data = await other.other_source_UserData(id=message.from_user.id)
+		if data['approval'] == 'yes':
 			issue = message.text[9:]
 			if issue == '':
 				await bot.send_message(
@@ -207,12 +242,12 @@ async def client_handler_ClientIssue(message: types.Message):
 				exception=issue
 			)
 		else:
-			await other.other_source_Logging(
+			await other.other_source_UserAlert(
 				id=message.from_user.id,
+				type='no_register',
 				filename=filename,
 				function='client_handler_ClientIssue',
-				exception='User not approved or banned.',
-				content=''
+				exception=True
 			)
 			await client_handler_UserStart(message)
 	except Exception as exception:
@@ -224,15 +259,20 @@ async def client_handler_ClientIssue(message: types.Message):
 			exception=exception
 		)
 
-# Предложение проспонсировать проект
 async def client_handler_ClientSponsor(message: types.Message):
+	'''
+	The command is triggered when the 'Поддержать' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_ClientSponsor'
+	)
 	try:
-		data = await sqlite_db.user_database_UserCheckOne(
-			line='approval',
-			column='id',
-			val=message.from_user.id
-		)
-		if data == 'yes':
+		data = await other.other_source_UserData(id=message.from_user.id)
+		if data['approval'] == 'yes':
 			await bot.send_message(
 				chat_id=message.from_user.id,
 				text='Мы будем очень благодарны, если вы поддержите наш проект!\n'
@@ -240,9 +280,21 @@ async def client_handler_ClientSponsor(message: types.Message):
 					 'СБП: +79136610052',
 				reply_markup=client_kb.kb_client
 			)
-			print(f'Пользователь {message.from_user.id} @{message.from_user.username} узнал о том, куда донатить.')
+			await other.other_source_Logging(
+				id=message.from_user.id,
+				filename=filename,
+				function='client_handler_ClientSponsor',
+				exception='',
+				content='Узнал, как можно поддержать проект.'
+			)
 		else:
-			print(f'Пользователь {message.from_user.id} @{message.from_user.username} не зарегистрировался, но пытался использовать команду "Поддержать".')
+			await other.other_source_UserAlert(
+				id=message.from_user.id,
+				type='no_register',
+				filename=filename,
+				function='client_handler_ClientServerStatus',
+				exception=True
+			)
 			await client_handler_UserStart(message)
 	except Exception as exception:
 		await other.other_source_UserAlert(
@@ -253,10 +305,30 @@ async def client_handler_ClientSponsor(message: types.Message):
 			exception=exception
 		)
 
-async def client_handler_ChangeNickname(message: types.Message):
+async def client_handler_ClientChangeNickname(message: types.Message):
+	'''
+	The command is triggered when the 'Изменить никнейм' is called
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_ClientChangeNickname'
+	)
 	pass
 
 async def client_handler_Any(message: types.Message):
+	'''
+	The command is triggered when any other message send to bot
+	:param message: aiogram.types.Message
+	:return: send message to user
+	'''
+	update = await sqlite_db.user_database_UsernameUpdate(
+		message=message,
+		filename=filename,
+		function='client_handler_Any'
+	)
 	if not message.chat.title:
 		await bot.send_message(message.from_user.id, text=f'{message.from_user.first_name}, я вас не понимаю.', reply_markup=client_kb.kb_help_client)
 

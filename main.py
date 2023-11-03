@@ -3,7 +3,7 @@ from create_bot import dp
 from data_base import sqlite_db
 from handlers import client, admin, other
 
-
+# -------------- Импорт функций Aiogram --------------
 from aiogram.utils import executor
 
 # -------------- Функции on_startup и on_shotdown --------------

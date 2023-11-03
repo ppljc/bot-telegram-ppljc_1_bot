@@ -1,8 +1,9 @@
 from mcrcon import MCRcon
+from config import localhost, password
 
 # Получение статуса сервера
 async def client_rc_ServerStatus():
-    with MCRcon('localhost', 'password') as mcr:
+    with MCRcon(localhost, password) as mcr:
         tps = mcr.command('tps')
         tps_split = tps.split()[6]
         tps_val = tps_split[3:][:-1]

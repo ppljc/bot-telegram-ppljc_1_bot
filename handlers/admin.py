@@ -12,7 +12,7 @@ from keyboards import admin_kb, client_kb
 # -------------- Импорт модулей Aiogram --------------
 from aiogram import types, Dispatcher
 from aiogram.dispatcher.filters import Text
-from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 
 # -------------- Переменные --------------
 is_monitoring = False
@@ -29,15 +29,15 @@ async def admin_source_OnStartUp():
         InlineKeyboardButton(text='Остановить', callback_data='monitoring off')
     )
     isadmin = await sqlite_db.user_database_UserCheckAll(
-        line='user_id',
+        line='id',
         column='isadmin',
         val='yes'
     )
     for ret in isadmin:
-        await bot.send_message(chat_id=ret,
+        await bot.send_message(chat_id=ret[0],
                                text='Мониторинг игроков.',
                                reply_markup=keyboard)
-        print(f'{ret} оповещён о том, что можно включить мониторинг игроков.')
+        print(f'{ret[0]} оповещён о том, что можно включить мониторинг игроков.')
 
 async def admin_source_UserIsntAdmin(id, exception):
     '''
@@ -51,19 +51,19 @@ async def admin_source_UserIsntAdmin(id, exception):
         column='id',
         val=id
     )
-    if isadmin == 'yes' and (str(exception) == "name 'ID' is not defined"):
+    if isadmin[0] == 'yes' and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(
             chat_id=id,
             text='Вы не вошли в админ мод!'
         )
         print(f'Пользователь {id} не вошел в админ мод перед использованием команд.')
-    elif isadmin == 'not' and (str(exception) == "name 'ID' is not defined"):
+    elif isadmin[0] == 'not' and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(
             caht_id=id,
             text='Вы не админ!'
         )
         print(f'Пользователь {id} не является админом, но пытается выполнить его команды.')
-    elif isadmin == '' and (str(exception) == "name 'ID' is not defined"):
+    elif isadmin[0] == '' and (str(exception) == "name 'ID' is not defined"):
         await bot.send_message(
             caht_id=id,
             text='Вы ещё не зарегистрировались.\n'
@@ -139,9 +139,11 @@ async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
                 filename='admin.py',
                 type='approval_yes',
                 function='admin_callback_ApplicationAccept',
-                exception=''
+                exception='',
+                admin_id=query.from_user.id
             )
             data = await sqlite_db.user_database_UserCheckAll(
+                line='*',
                 column='approval',
                 val='not'
             )
@@ -284,13 +286,10 @@ async def admin_callback_PlayersMonitoringOn(query: types.CallbackQuery):
 # Проверка на присутствие админа в базе данных и добавление его туда в случае отстутствия
 async def admin_handler_AdminActivation(message: types.Message):
     global ID
-    if message.chat.id == 832082275 or message.chat.id == 648541799:
-        data = await sqlite_db.user_database_UserCheckOne(
-            line='*',
-            column='isadmin',
-            val=message.from_user.id
-        )
-        if data[5] == 'yes':
+    chat_id = f'{message.chat.id}'[1:]
+    if chat_id == '832082275' or chat_id == '648541799':
+        data = await other.other_source_UserData(id=message.from_user.id)
+        if data['isadmin'] == 'yes':
             ID = message.from_user.id
             await bot.send_message(
                 chat_id=message.from_user.id,
@@ -300,7 +299,7 @@ async def admin_handler_AdminActivation(message: types.Message):
             )
             print(f'Пользователь {message.from_user.id} {message.from_user.username} входит в режим админа.')
         else:
-            if data[4] == 'yes':
+            if data['approval'] == 'yes':
                 await sqlite_db.admin_database_AdminAdd(id=message.from_user.id)
                 ID = message.from_user.id
                 await bot.send_message(
@@ -308,8 +307,9 @@ async def admin_handler_AdminActivation(message: types.Message):
                     text='Вы стали админом.\n'
                          'Что будем делать?',
                     reply_markup=admin_kb.kb_main_admi)
+                nickname = data['nickname']
                 data_op = await admin_rc.admin_rc_Op(
-                    nickname=data[3],
+                    nickname=nickname,
                     type=''
                 )
                 if data_op == 'Nothing changed. The player already is an operator':
@@ -318,14 +318,14 @@ async def admin_handler_AdminActivation(message: types.Message):
                         text='Вы уже являетесь оператором сервера.',
                         reply_markup=admin_kb.kb_main_admin
                     )
-                    print(f'Пользователь {message.from_user.id} {data[3]} попытался стать оператором сервера, хоть им уже является.')
-                elif data_op == f'Made {data[3]} a server operator':
+                    print(f'Пользователь {message.from_user.id} {nickname} попытался стать оператором сервера, хоть им уже является.')
+                elif data_op == f'Made {nickname} a server operator':
                     await bot.send_message(
                         chat_id=message.from_user.id,
                         text='Теперь вы являетесь оператором сервера.',
                         reply_markup=admin_kb.kb_main_admin
                     )
-                    print(f'Пользователь {message.from_user.id} {data[3]} стал оператором сервера.')
+                    print(f'Пользователь {message.from_user.id} {nickname} стал оператором сервера.')
                 print(f'Пользователь {message.from_user.id} {message.from_user.username} получает права админа.')
             else:
                 await client.client_handler_UserStart(message)
@@ -341,6 +341,7 @@ async def admin_handler_AdminRequests(message: types.Message):
     try:
         if message.from_user.id == ID:
             data = await sqlite_db.user_database_UserCheckAll(
+                line='*',
                 column='approval',
                 val='not'
             )
@@ -354,9 +355,10 @@ async def admin_handler_AdminRequests(message: types.Message):
                 nickname = data_user[3]
                 await bot.send_message(
                     chat_id=message.from_user.id,
-                    text=f'{user_id} {username} {nickname}',
+                    text=f'{id} {username} {nickname}',
                     reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить',callback_data=f'accept_application {id}'),
-                                                            InlineKeyboardButton('Отклонить', callback_data=f'reject_application {id}'))
+                                                            InlineKeyboardButton('Отклонить', callback_data=f'reject_application {id}')),
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел заявку пользователя {id} {username}.')
             else:
@@ -466,14 +468,18 @@ async def admin_handler_UserRemove(message: types.Message):
                 val='Удалить пользователя'
             )
     except Exception as exception:
-        await admin_source_ForException(id=message.from_user.id, exception=exception,
-                                        function='admin__handler__user_remove')
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_UserRemove'
+        )
 
 # Получение списка пользователей с одобренными заявками
 async def admin_handler_UserListApproved(message: types.Message):
     try:
         if message.from_user.id == ID:
             data = await sqlite_db.user_database_UserCheckAll(
+                line='*',
                 column='approval',
                 val='yes'
             )
@@ -481,10 +487,11 @@ async def admin_handler_UserListApproved(message: types.Message):
             if amount != 0:
                 response = '**Пользователи**\n'
                 for ret in data:
-                    response += f'Telegram тег: {ret[2]}\n Telegram ID: {ret[1]}\n Minecraft ник: {ret[3]}\n Время регистрации: {ret[0]}\n Является админом: {ret[5]}\n\n'
+                    response += f'Аккаунт: {ret[2]}\n Telegram ID: {ret[1]}\n Minecraft ник: {ret[3]}\n Время регистрации: {ret[0]}\n Является админом: {ret[5]}\n\n'
                 await bot.send_message(
                     chat_id=message.from_user.id,
-                    text=response
+                    text=response,
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел список подтвержденных пользователей из {amount} человек.')
         else:
@@ -494,8 +501,11 @@ async def admin_handler_UserListApproved(message: types.Message):
                 val='Список игроков'
             )
     except Exception as exception:
-        await admin_source_ForException(id=message.from_user.id, exception=exception,
-                                        function='admin__handler__user_approved_list')
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_UserListApproved'
+        )
 
 # Получение списка пользователей с отклоненными заявками
 async def admin_handler_UserListBanned(message: types.Message):
@@ -530,8 +540,11 @@ async def admin_handler_UserListBanned(message: types.Message):
                 val='ЧС'
             )
     except Exception as exception:
-        await admin_source_ForException(id=message.from_user.id, exception=exception,
-                                        function='admin__handler__user_banned_list')
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_UserListBanned'
+        )
 
 # Оповещение всех пользователей о чем-то
 async def admin_handler_UserNotify(message: types.Message):
@@ -573,8 +586,11 @@ async def admin_handler_UserNotify(message: types.Message):
                 val='Оповестить'
             )
     except Exception as exception:
-        await admin_source_ForException(id=message.from_user.id, exception=exception,
-                                        function='admin__handler__user_notify')
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_UserNotify'
+        )
 
 async def admin_handler_PlayersMonitoring(message: types.Message):
     try:
@@ -597,8 +613,11 @@ async def admin_handler_PlayersMonitoring(message: types.Message):
                 val='Мониторинг'
             )
     except Exception as exception:
-        await admin_source_ForException(id=message.from_user.id, exception=exception,
-                                        function='admin__handler__players_monitoring')
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_PlayersMonitoring'
+        )
 
 def register_handlers_admin(dp: Dispatcher):
     dp.register_callback_query_handler(admin_callback_ApplicationAccept, lambda x: x.data.startswith('accept_application'))
