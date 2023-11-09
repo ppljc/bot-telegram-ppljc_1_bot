@@ -23,7 +23,7 @@ async def client_handler_UserStart(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_UserStart'
@@ -89,7 +89,7 @@ async def client_handler_UserRegister(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_UserRegister'
@@ -160,7 +160,7 @@ async def client_handler_ClientServerStatus(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_ClientServerStatus'
@@ -209,7 +209,7 @@ async def client_handler_ClientIssue(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_ClientIssue'
@@ -265,7 +265,7 @@ async def client_handler_ClientSponsor(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_ClientSponsor'
@@ -311,7 +311,7 @@ async def client_handler_ClientChangeNickname(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_ClientChangeNickname'
@@ -324,7 +324,7 @@ async def client_handler_Any(message: types.Message):
 	:param message: aiogram.types.Message
 	:return: send message to user
 	'''
-	update = await sqlite_db.user_database_UsernameUpdate(
+	await sqlite_db.user_database_UsernameUpdate(
 		message=message,
 		filename=filename,
 		function='client_handler_Any'

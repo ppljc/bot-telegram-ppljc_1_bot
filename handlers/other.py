@@ -17,7 +17,14 @@ from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeybo
 
 # -------------- Вспомогательные функции --------------
 async def other_source_UserAlert(id, type, filename, function, exception, admin_id=0):
-    data = await other_source_UserData(id=id)
+    data = await other_source_UserData(
+        id=id,
+        formatted=False
+    )
+    data_formatted = await other_source_UserData(
+        id=id,
+        formatted=True
+    )
     data_admin = await other_source_UserData(id=admin_id)
     list_admins = await sqlite_db.user_database_UserCheckAll(
         line='id',
@@ -25,60 +32,27 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         val='yes'
     )
     message = ''
-    if type == 'user_delete':
+    if type == 'blocked':
+        await other_source_Logging(
+            id=id,
+            filename=filename,
+            function=function,
+            exception='Bot blocked by this user.',
+            content=''
+        )
+        await bot.send_message(
+            chat_id=admin_id,
+            text=f'{data_formatted}'
+                 f'Заблокировал бота и не может получить сообщение.',
+            parse_mode=ParseMode.MARKDOWN
+        )
         await other_source_Logging(
             id=admin_id,
             filename=filename,
             function=function,
             exception='',
-            content=f'Удалил из БД пользователя {data}.'
+            content=f'Оповещён о том, что {data} заблокировал бота и не может получить сообщение.'
         )
-        response_message = ''
-        response_logging = ''
-        for ret in list_admins:
-            if ret[0] != admin_id:
-                response_message = f'{data_admin} удалил'
-                response_logging = response_message
-            elif ret[0] == admin_id:
-                response_message = 'Вы удалили'
-                response_logging = 'он удалил'
-            message = f'пользователя {data} из БД сервера.'
-            await bot.send_message(
-                chat_id=ret[0],
-                text=f'{response_message} {message}'
-            )
-            await other_source_Logging(
-                id=ret[0],
-                filename=filename,
-                function=function,
-                exception='',
-                content=f'Оповещён, что {response_logging} {message}'
-            )
-        try:
-            await bot.send_message(
-                chat_id=id,
-                text='Мы сожалеем, но вы были удалены из базы данных сервера.',
-                reply_markup=client_kb.kb_help_client
-            )
-            await other_source_Logging(
-                id=id,
-                filename=filename,
-                function=function,
-                exception='',
-                content='Оповещён о том, что он удалён из БД сервера.'
-            )
-        except:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=f'{data} заблокировал бота, а потому не может получить сообщение.'
-            )
-            await other_source_Logging(
-                id=admin_id,
-                filename=filename,
-                function=function,
-                exception='',
-                content=f'Оповещён о том, что {data} заблокировал бота и не может получить сообщение.'
-            )
 
     elif type == 'exception':
         exception = str(exception)
@@ -98,8 +72,9 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         response_logging = ''
         for ret in list_admins:
             if ret[0] != id:
-                response_message = f'{data} получил'
-                response_logging = response_message
+                response_message = (f'{data_formatted}'
+                                    f'Получил')
+                response_logging = f'{data} получил'
             elif ret[0] == id:
                 response_message = 'Вы получили'
                 response_logging = 'он получил'
@@ -129,20 +104,21 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
             exception='',
             content='Отправил заявку на регистрацию.'
         )
-        for ret in data_admin:
-            message = f'на регистрацию от пользователя {data}.'
+        for ret in list_admins:
             try:
                 await bot.send_message(
                     chat_id=ret[0],
-                    text=f'Новая заявка {message}',
-                    reply_markup=client_kb.kb_client
+                    text=f'{data_formatted}'
+                         f'Отправил заявку на регистрацию.',
+                    reply_markup=client_kb.kb_client,
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 await other_source_Logging(
                     id=ret[0],
                     filename=filename,
                     function=function,
                     exception='',
-                    content=f'Оповещён о новой заявке {message}'
+                    content=f'Оповещён о новой заявке на регистрацию от {data}.'
                 )
             except:
                 await other_source_Logging(
@@ -154,6 +130,7 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
                 )
 
     elif type[:8] == 'approval':
+        query = exception
         value_message = ''
         value_logging = ''
         value_query = ''
@@ -187,7 +164,7 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
                 )
                 response_logging = data_admin
             elif ret[0] == admin_id:
-                await exception.answer(
+                await query.answer(
                     text=value_query,
                     show_alert=True
                 )
@@ -264,11 +241,11 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
         await bot.send_message(
             chat_id=id,
             text=f'Текущее состояние сервера:\n'
-		         f' Число игроков: {list}\n'
+                 f' Число игроков: {list}\n'
                  f' {message}'
-				 f' TPS: {tps}\n\n'
-				 f' Постояный IP сервера: mc.server53.ru',
-			reply_markup=client_kb.kb_client
+                 f' TPS: {tps}\n\n'
+                 f' Постояный IP сервера: mc.server53.ru',
+            reply_markup=client_kb.kb_client
         )
         await other_source_Logging(
             id=id,
@@ -307,22 +284,39 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
                 content=f'Оповещён, что {message} обнаружил, что сервер оффлайн.'
             )
 
-async def other_source_UserData(id):
+async def other_source_UserData(id, formatted=False):
     response = await sqlite_db.user_database_UserCheckOne(
         line='*',
         column='id',
         val=id
     )
-    if not response:
-        response = ['', id, '', '', '', '']
-    data = {
-        'date': response[0],
-        'id': response[1],
-        'username': response[2],
-        'nickname': response[3],
-        'approval': response[4],
-        'isadmin': response[5]
-    }
+    if formatted == False:
+        if not response:
+            response = ['', id, '', '', '', '']
+        data = {
+            'date': response[0],
+            'id': response[1],
+            'username': response[2],
+            'nickname': response[3],
+            'approval': response[4],
+            'isadmin': response[5]
+        }
+    elif formatted == True:
+        if not response:
+            data = (
+                f'Пользователь не зарегистрирован!\n'
+                f' Telegram ID: {id}\n'
+                f' Аккаунт: [USER](tg://user?id={id})'
+            )
+        else:
+            data = (
+                f'Зарегистрирован: {response[0]}\n'
+                f' Telegram ID: {response[1]}\n'
+                f' Аккаунт: {response[2]}\n'
+                f' Minecraft ник: {response[3]}\n'
+                f' Статус заявки: {response[4]}\n'
+                f' Является администратором: {response[5]}\n\n'
+            )
     return data
 
 async def other_source_Logging(id, filename, function, exception, content):
