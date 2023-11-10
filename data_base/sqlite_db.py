@@ -1,3 +1,4 @@
+# -------------- Импорт локальных функций --------------
 from handlers import other
 
 # -------------- Импорт функций --------------
@@ -21,6 +22,7 @@ def sql_start():
     base.execute('CREATE TABLE IF NOT EXISTS users'
                  '(date DATE, id INTEGER UNIQUE, username TEXT UNIQUE, nickname TEXT UNIQUE, approval TEXT, isadmin TEXT)')
     base.commit()
+    return True
 
 # -------------- Функции для пользователей --------------
 
@@ -35,7 +37,15 @@ async def user_database_UserAdd(id, username, nickname):
     '''
     try:
         date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute('INSERT INTO users (date, id, username, nickname, approval, isadmin) VALUES (?, ?, ?, ?, ?, ?)', (date, id, username, nickname, 'not', 'not'))
+        cur.execute('INSERT INTO users (date, id, username, nickname, approval, isadmin, phone) VALUES (?, ?, ?, ?, ?, ?, ?)', (date, id, username, nickname, 'not', 'not', 'not'))
+        base.commit()
+    except:
+        return 0
+
+async def user_database_UpdateUsernameNickname(id, username, nickname):
+    try:
+        cur.execute('UPDATE users SET username = ? WHERE id = ?', (username, id,))
+        cur.execute('UPDATE users SET nickname = ? WHERE id = ?', (nickname, id,))
         base.commit()
     except:
         return 0
@@ -100,24 +110,24 @@ async def user_database_UserSetApproval(id, val):
     except:
         return 0
 
+async def user_database_UserSetPhone(id, phone):
+    try:
+        cur.execute('UPDATE users SET phone = ? WHERE id = ?', (phone, id,))
+        base.commit()
+    except Exception as e:
+        return 0
+
 async def user_database_UsernameUpdate(message, filename, function):
     try:
+        data = await other.other_source_UserData(
+            id=message.from_user.id,
+            formatted=False
+        )
         if message.from_user.username:
             username = f'[{message.from_user.first_name}](https://t.me/{message.from_user.username})'
         else:
-            username = f'[{message.from_user.first_name}](tg://user?id={message.from_user.id})'
-        data = await user_database_UserCheckOne(
-            line='username',
-            column='id',
-            val=message.from_user.id
-        )
-        data = data[0]
-        if data != username:
-            val_ret = 0
-            for ret in nickname:
-                if ret == '_':
-                    nickname = nickname[:val_ret] + '\_' + nickname[(val_ret + 1):]
-                val_ret += 1
+            username = f'[{message.from_user.first_name}](https://t.me/{data["phone"]})'
+        if data['username'] != username:
             cur.execute('UPDATE users SET username = ? WHERE id = ?', (username, message.from_user.id,))
             base.commit()
             await other.other_source_Logging(
@@ -125,7 +135,7 @@ async def user_database_UsernameUpdate(message, filename, function):
                 filename=filename,
                 function=function,
                 exception='',
-                content=f'Обновил username с "{data}" на "{username}".'
+                content=f'Обновил username с "{data["username"]}" на "{username}".'
             )
     except:
         return 0
@@ -154,5 +164,6 @@ async def admin_database_UserRemove(id):
     try:
         cur.execute('DELETE FROM users WHERE id = ?', (id,))
         base.commit()
+        return 1
     except:
         return 0

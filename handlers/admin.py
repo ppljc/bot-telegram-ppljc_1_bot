@@ -30,6 +30,7 @@ async def admin_source_OnStartUp():
         column='isadmin',
         val='yes'
     )
+    print(list_admins)
     for ret in list_admins:
         await bot.send_message(
             chat_id=ret[0],

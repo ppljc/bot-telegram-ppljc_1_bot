@@ -1,7 +1,9 @@
 # -------------- Импорт функций --------------
 import asyncio
-import config
 import datetime
+import logging
+
+from logging.handlers import TimedRotatingFileHandler
 
 # -------------- Импорт локальных функций --------------
 from handlers import client
@@ -16,6 +18,30 @@ from aiogram.dispatcher.filters import Text
 from aiogram.types import ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 
 # -------------- Вспомогательные функции --------------
+logger = None
+def other_source_StartLogging():
+    global logger
+    try:
+        # Создание объекта логгера
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+
+        # Создание TimedRotatingFileHandler с ежедневной ротацией
+        log_filename = f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}_log.log'
+        handler = TimedRotatingFileHandler(log_filename, when="midnight", interval=1, encoding='utf-8')
+        handler.suffix = "%Y-%m-%d"
+        handler.setLevel(logging.INFO)
+
+        # Создание форматтера для лога
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        handler.setFormatter(formatter)
+
+        # Добавление обработчика к логгеру
+        logger.addHandler(handler)
+        return 1
+    except:
+        return 0
+
 async def other_source_UserAlert(id, type, filename, function, exception, admin_id=0):
     data = await other_source_UserData(
         id=id,
@@ -340,4 +366,7 @@ async def other_source_Logging(id, filename, function, exception, content):
     else:
         data = await other_source_UserData(id=id)
     date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print(f'DATE="{date}"; DATA={data}; FILENAME="{filename}"; FUNCTION="{function}"; CONTENT="{content}"; EXCEPTION="{exception}";')
+
+    log_message = f'DATA={data}; FILENAME="{filename}"; FUNCTION="{function}"; CONTENT="{content}"; EXCEPTION="{exception}";'
+    print(f'DATE="{date}"; {log_message}')
+    logger.info(log_message)

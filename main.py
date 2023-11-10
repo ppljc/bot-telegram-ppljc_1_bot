@@ -14,6 +14,8 @@ async def on_startup(_):
 		print('Data base connected OK!')
 	if bot_rc.mcrcon_start():
 		print('MCRcon connected OK!')
+	if other.other_source_StartLogging():
+		print('Logger created OK!')
 	await admin.admin_source_OnStartUp()
 
 async def on_shotdown(_):
