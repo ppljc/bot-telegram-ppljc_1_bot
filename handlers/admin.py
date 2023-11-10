@@ -1,10 +1,11 @@
 # -------------- Импорт функций --------------
 import asyncio
-import config
+import datetime
+import emoji
 
 # -------------- Импорт локальных функций --------------
 from handlers import client, other
-from mcrcons import admin_rc, other_rc
+from mcrcons import bot_rc
 from create_bot import bot, dp
 from data_base import sqlite_db
 from keyboards import admin_kb, client_kb
@@ -24,11 +25,6 @@ async def admin_source_OnStartUp():
     Управление мониторингом сервера
     :return: Отсылает сообщение в чат админам
     '''
-    keyboard = InlineKeyboardMarkup()
-    keyboard.row(
-        InlineKeyboardButton(text='Запустить', callback_data='monitoring on'),
-        InlineKeyboardButton(text='Остановить', callback_data='monitoring off')
-    )
     list_admins = await sqlite_db.user_database_UserCheckAll(
         line='id',
         column='isadmin',
@@ -38,7 +34,7 @@ async def admin_source_OnStartUp():
         await bot.send_message(
             chat_id=ret[0],
             text='Мониторинг игроков.',
-            reply_markup=keyboard
+            reply_markup=admin_kb.kb_inline_monitoring
         )
         await other.other_source_Logging(
             id=ret[0],
@@ -104,80 +100,87 @@ async def admin_source_ForElse(id, function):
         text='Вы не админ!',
         reply_markup=client_kb.kb_help_client
     )
-
-    print(f'Пользователь {id} {username} пытался выполнить команду админа "{val}".')
+    await other.other_source_Logging(
+        id=id,
+        filename=filename,
+        function=function,
+        exception='',
+        content='Пытался вызвать эту команду.'
+    )
 
 # -------------- CallBack функции --------------
-
-# Одобрение завяки с помощью коллбэка
 async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
-    nickname = await sqlite_db.user_database_UserCheckOne(
-        line='nickname',
-        column='id',
-        val=query.data[19:]
+    '''
+    Одобрение заявки на регистрацию от пользователя
+    :param query:
+    :return:
+    '''
+    # Обозначаем переменные id админа и пользователя
+    id = query.data[19:]
+    admin_id = query.from_user.id
+    # Получаем отформатированную и неотформатированную информацию о пользователе и админе
+    data = await other.other_source_UserData(
+        id=id,
+        formatted=False
     )
-    nickname = nickname[0]
+    data_formatted = await other.other_source_UserData(
+        id=id,
+        formatted=True
+    )
+    data_admin = await other.other_source_UserData(
+        id=admin_id,
+        formatted=False
+    )
+    data_admin_formatted = await other.other_source_UserData(
+        id=admin_id,
+        formatted=True
+    )
     try:
-        response = await admin_rc.admin_rc_Whitelist(
-            nickname=nickname,
-            type='add'
+        # wl в названии переменных сокращение от whitelist
+        # sa - сокращение set approval
+        # Добавление в whitelist
+        response_wl = await bot_rc.bot_rc_Universal(command=f'whitelist add {data["nickname"]}')
+        if response_wl == 'Player is already whitelisted':
+            message_wl = f'Пользователь уже находится в белом списке {emoji.emojize(":cross_mark:")}'
+            message_wl_logging = f'Пытался добавить в белый список присутствующего там игрока {data}'
+        elif response_wl == f'Added {data["nickname"]} to the whitelist':
+            message_wl = f'Пользователь добавлен в белый список {emoji.emojize(":check_mark:")}'
+            message_wl_logging = f'Добавил в белый список игрока {data}'
+        # Изменение статуса завяки в базе данных
+        response_sa = await sqlite_db.user_database_UserSetApproval(
+            id=id,
+            val='yes'
         )
-        if response == 'Player is already whitelisted':
-            await bot.send_message(
-                query.from_user.id,
-                text=f'Игрок {nickname} уже находится в вайтлисте.'
-            )
-            print(f'Админ {query.from_user.id} пытался добавить в вайтлист уже присутствующего там игрока {query.data[19:]} {nickname}.')
-        elif response == f'Added {nickname} to the whitelist':
-            await bot.send_message(
-                query.from_user.id,
-                text=f'Игрок {nickname} добавлен в вайтлист.'
-            )
-            print(f'Админ {query.from_user.id} добавил в вайтлист игрока {query.data[19:]} {nickname}.')
-        if nickname:
-            await sqlite_db.user_database_UserSetApproval(
-                id=query.data[19:],
-                val='yes'
-            )
-            print(f'Админ {query.from_user.id} одобряет заявку пользователя {query.data[19:]} {nickname}.')
-            await query.answer(
-                text='Одобрено.',
-                show_alert=True
-            )
-            await other.other_source_UserAlert(
-                id=query.data[19:],
-                filename='admin.py',
-                type='approval_yes',
-                function='admin_callback_ApplicationAccept',
-                exception=query,
-                admin_id=query.from_user.id
-            )
-            data = await sqlite_db.user_database_UserCheckAll(
-                line='*',
-                column='approval',
-                val='not'
-            )
-            amount = len(data)
-            if amount != 0:
-                await bot.send_message(
-                    chat_id=query.from_user.id,
-                    text=f'Количество оставшихся заявок: {amount}.'
-                )
-                print(f'Админ {query.from_user.id} оповещён, что количество оставшихся заявок: {amount}.')
-                await admin_handler_AdminRequests(query)
-            else:
-                await bot.send_message(
-                    chat_id=query.from_user.id,
-                    text='Больше заявок не осталось.'
-                )
-                print(f'Админ {query.from_user.id} оповещён, что больше заявок не осталось.')
-        else:
-            await bot.send_message(
-                chat_id=query.from_user.id,
-                text=f'Пользователь {query.data[19:]} уже находится в базе данных.'
-            )
+        # Сообщение админу результатов вышеперечисленных действий
+        await bot.send_message(
+            chat_id=admin_id,
+            text=f'{data_formatted}\n\n'
+                 f'{message_wl}\n\n'
+                 f'Пользователь добавлен в базу данных {emoji.emojize(":check_mark:")}',
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True
+        )
+        await other.other_source_Logging(
+            id=admin_id,
+            filename=filename,
+            function='admin_callback_ApplicationAccept',
+            exception='',
+            content=f'{message_wl_logging}. | Одобряет заявку на регистрацию от {data}.'
+        )
+        # Сообщение пользователю, что его заявка одобрена
+        await other.other_source_UserAlert(
+            id=id,
+            filename=filename,
+            type='approval_yes',
+            function='admin_callback_ApplicationAccept',
+            exception='',
+            admin_id=admin_id
+        )
+        # Отправляем админа смотреть следующие заявки
+        await admin_handler_AdminRequests(query)
     except Exception as exception:
-        if await other_rc.other_rc_ServerOnline():
+        # Если сервер онлайн, то используем опопвещение об ошибке
+        if await bot_rc.bot_rc_ServerOnline():
             await other.other_source_UserAlert(
                 id=query.from_user.id,
                 type='exception',
@@ -185,58 +188,133 @@ async def admin_callback_ApplicationAccept(query: types.CallbackQuery):
                 function='admin_callback_ApplicationAccept',
                 exception=exception
             )
+        # Если сервер оффлайн, то сообщаем админу об этом
         else:
-            print(f'Админ {query.from_user.id} {query.from_user.username} обратился с коммандой "whitelist add" к выключенному серверу.')
-            await query.answer(
-                text='Сервер оффлайн!',
-                show_alert=True
+            await bot.send_message(
+                chat_id=admin_id,
+                text='Сервер оффлайн.',
             )
+            await other.other_source_Logging(
+                id=admin_id,
+                filename=filename,
+                function='admin_callback_ApplicationAccept',
+                exception='Server is offline.',
+                content=''
+            )
+    # Удаляем сообщение в котором отражены данные заявки на регистрацию
     await bot.delete_message(
         chat_id=query.from_user.id,
         message_id=query.message.message_id
     )
 
-# Отклонение заявки с помощью коллбэка
 async def admin_callback_ApplicationReject(query: types.CallbackQuery):
+    '''
+    Отклонение заявки на регистрацию
+    :param query:
+    :return:
+    '''
+    id = query.data[19:]
+    admin_id = query.from_user.id
+    # Получаем отформатированную и неотформатированную информацию о пользователе и админе
+    data = await other.other_source_UserData(
+        id=id,
+        formatted=False
+    )
+    data_formatted = await other.other_source_UserData(
+        id=id,
+        formatted=True
+    )
+    data_admin = await other.other_source_UserData(
+        id=admin_id,
+        formatted=False
+    )
+    data_admin_formatted = await other.other_source_UserData(
+        id=admin_id,
+        formatted=True
+    )
+    # Устанаваливаем статус заявки пользователя в базе данных
     await sqlite_db.user_database_UserSetApproval(
-        id=query.data[19:],
+        id=id,
         val='ban'
     )
-    await query.answer(
-        text='Отклонено.',
-        show_alert=True
-    )
     await other.other_source_UserAlert(
-        id=query.data[19:],
+        id=id,
         type='approval_ban',
         filename='admin.py',
         function='admin_callback_ApplicationReject',
-        exception=query,
-        admin_id=query.from_user.id
+        exception='',
+        admin_id=admin_id
     )
+    # Оповещаем админа о успешности вышеперечисленных действий
+    await bot.send_message(
+        chat_id=admin_id,
+        text=f'{data_formatted}\n\n'
+             f'Заявка пользователя отклонена {emoji.emojize(":check_mark:")}',
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True
+    )
+    await other.other_source_Logging(
+        id=admin_id,
+        filename=filename,
+        function='admin_callback_ApplicationReject',
+        exception='',
+        content=f'Одобряет заявку на регистрацию от {data}.'
+    )
+    # Удаляем сообщение в котором отражены данные заявки на регистрацию
     await bot.delete_message(
         chat_id=query.from_user.id,
         message_id=query.message.message_id
     )
 
-# Мониторинг игроков на сервере
 async def admin_callback_PlayersMonitoringOn(query: types.CallbackQuery):
+    '''
+    Включаем мониторинг игроков на майнкрафт сервере
+    :param query:
+    :return:
+    '''
     global is_monitoring
     if not is_monitoring:
-        is_monitoring = True
-        await query.answer(
-            text='Вы запустили мониторинг.',
-            show_alert=True
-        )
-        print(f'Админ {query.from_user.id} включил мониторинг игроков.')
         await bot.delete_message(
             chat_id=query.from_user.id,
             message_id=query.message.message_id
         )
+        if await bot_rc.bot_rc_ServerOnline():
+            await bot.send_message(
+                chat_id=query.from_user.id,
+                text=f'Мониторинг запущен.',
+            )
+            await other.other_source_Logging(
+                id=query.from_user.id,
+                filename=filename,
+                function='admin_callback_PlayersMonitoringOn',
+                exception='',
+                content='Запустил мониторинг сервера.'
+            )
+            is_monitoring = True
+        else:
+            await other.other_source_UserAlert(
+                id=query.from_user.id,
+                type='server_offline',
+                filename=filename,
+                function='admin_callback_PlayersMonitoringOn',
+                exception=''
+            )
+            return
         player_pr = []
         while True:
             response = ''
-            player_rn = await admin_rc.admin_rc_ListPlayers()
+            try:
+                player_rn = await bot_rc.admin_rc_ListPlayers()
+            except:
+                await other.other_source_UserAlert(
+                    id=query.from_user.id,
+                    type='server_offline',
+                    filename=filename,
+                    function='admin_callback_PlayersMonitoringOn',
+                    exception='monitoring'
+                )
+                is_monitoring = False
+                return
             if len(player_pr) < len(player_rn):
                 player_new = [item for item in player_rn if item not in player_pr]
                 if len(player_new) == 1:
@@ -279,17 +357,32 @@ async def admin_callback_PlayersMonitoringOn(query: types.CallbackQuery):
                     line='id'
                 )
                 for ret in data:
-                    await bot.send_message(ret[0], text=f'{response}')
-                print(response)
+                    await bot.send_message(ret[0], text=response)
+                await other.other_source_Logging(
+                    id=000000,
+                    filename=filename,
+                    function='admin_callback_PlayersMonitoringOn',
+                    exception='',
+                    content=response
+                )
             player_pr = player_rn
             await asyncio.sleep(30)
     else:
-        await query.answer(
-            text='Уже работает.',
-            show_alert=True
+        await bot.send_message(
+            chat_id=query.from_user.id,
+            text='Мониторинг уже работает.'
         )
-        print(f'Админ {query.from_user.id} попытался включить уже запущенный мониторинг игроков.')
-    await bot.delete_message(query.from_user.id, query.message.message_id)
+        await other.other_source_Logging(
+            id=query.from_user.id,
+            filename=filename,
+            function='admin_callback_PlayersMonitoringOn',
+            exception='Monitoring is already enabled',
+            content=''
+        )
+        await bot.delete_message(
+            chat_id=query.from_user.id,
+            message_id=query.message.message_id
+        )
 
 # -------------- Handler функции --------------
 
@@ -298,7 +391,10 @@ async def admin_handler_AdminActivation(message: types.Message):
     global ID
     chat_id = f'{message.chat.id}'[1:]
     if chat_id == '832082275' or chat_id == '648541799':
-        data = await other.other_source_UserData(id=message.from_user.id)
+        data = await other.other_source_UserData(
+            id=message.from_user.id,
+            formatted=False
+        )
         if data['isadmin'] == 'yes':
             ID = message.from_user.id
             await bot.send_message(
@@ -307,7 +403,13 @@ async def admin_handler_AdminActivation(message: types.Message):
                      'Что будем делать?',
                 reply_markup=admin_kb.kb_main_admin
             )
-            print(f'Пользователь {message.from_user.id} {message.from_user.username} входит в режим админа.')
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_AdminActivation',
+                exception='',
+                content='Входит в режим админа.'
+            )
         else:
             if data['approval'] == 'yes':
                 await sqlite_db.admin_database_AdminAdd(id=message.from_user.id)
@@ -317,71 +419,90 @@ async def admin_handler_AdminActivation(message: types.Message):
                     text='Вы стали админом.\n'
                          'Что будем делать?',
                     reply_markup=admin_kb.kb_main_admin)
-                nickname = data['nickname']
-                data_op = await admin_rc.admin_rc_Op(
-                    nickname=nickname,
-                    type=''
-                )
+                data_op = await bot_rc.bot_rc_Universal(command=f'op {data["nickname"]}')
                 if data_op == 'Nothing changed. The player already is an operator':
-                    await bot.send_message(
-                        chat_id=message.from_user.id,
-                        text='Вы уже являетесь оператором сервера.',
-                        reply_markup=admin_kb.kb_main_admin
-                    )
-                    print(f'Пользователь {message.from_user.id} {nickname} попытался стать оператором сервера, хоть им уже является.')
-                elif data_op == f'Made {nickname} a server operator':
-                    await bot.send_message(
-                        chat_id=message.from_user.id,
-                        text='Теперь вы являетесь оператором сервера.',
-                        reply_markup=admin_kb.kb_main_admin
-                    )
-                    print(f'Пользователь {message.from_user.id} {nickname} стал оператором сервера.')
-                print(f'Пользователь {message.from_user.id} {message.from_user.username} получает права админа.')
+                    message_chat = 'Вы уже являетесь оператором сервера'
+                    message_logging = 'Пытается повторно стать оператором сервера'
+                elif data_op == f'Made {data["nickname"]} a server operator':
+                    message_chat = 'Теперь вы являетесь оператором сервера'
+                    message_logging = 'Становится оператором сервера'
+                await bot.send_message(
+                    chat_id=message.from_user.id,
+                    text=f'{message_chat}',
+                    reply_markup=admin_kb.kb_main_admin
+                )
+                await other.other_source_Logging(
+                    id=message.from_user.id,
+                    filename=filename,
+                    function='admin_handler_AdminActivation',
+                    exception='',
+                    content=f'Получает права администратора | {message_logging}'
+                )
             else:
+                await other.other_source_UserAlert(
+                    id=message.from_user.id,
+                    type='no_register',
+                    filename=filename,
+                    function='admin_handler_AdminActivation',
+                    exception=True
+                )
                 await client.client_handler_UserStart(message)
-                print(f'Пользователь {message.from_user.id} {message.from_user.username} не зарегистрировался, но пытался получить права админа.')
     else:
         await bot.send_message(
             chat_id=message.chat.id,
-            text='Ага, пососите)'
+            text='Ваша группа не является группой админов сервера.'
         )
     await message.delete()
 
 async def admin_handler_AdminRequests(message: types.Message):
+    '''
+    Просмотр списка пользователей с неподтвержденными заявками
+    :param message:
+    :return:
+    '''
     try:
         if message.from_user.id == ID:
-            data = await sqlite_db.user_database_UserCheckAll(
-                line='*',
+            id = await sqlite_db.user_database_UserCheckOne(
+                line='id',
                 column='approval',
-                val='not'
+                val='not',
             )
-            try:
-                data_user = data[0]
-            except:
-                data_user = []
-            if len(data_user):
-                id = data_user[1]
-                username = data_user[2]
-                nickname = data_user[3]
+            if id:
+                id = id[0]
+                data = await other.other_source_UserData(
+                    id=id,
+                    formatted=False
+                )
+                data_formatted = await other.other_source_UserData(
+                    id=id,
+                    formatted=True
+                )
                 await bot.send_message(
                     chat_id=message.from_user.id,
-                    text=f'{id} {username} {nickname}',
+                    text=data_formatted,
                     reply_markup=InlineKeyboardMarkup().row(InlineKeyboardButton('Одобрить',callback_data=f'accept_application {id}'),
                                                             InlineKeyboardButton('Отклонить', callback_data=f'reject_application {id}')),
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode=ParseMode.MARKDOWN,
+                    disable_web_page_preview=True
                 )
-                print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел заявку пользователя {id} {username}.')
+                response = f'заявку пользователя {data}'
             else:
                 await bot.send_message(
                     chat_id=message.from_user.id,
                     text='Неподтвержденных заявок не осталось.'
                 )
-                print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел пустой список заявок.')
+                response = 'пустой список заявок'
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_AdminRequests',
+                exception='',
+                content=f'Просмотрел {response}.'
+            )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='Просмотреть заявки'
+                function='admin_handler_AdminRequests'
             )
     except Exception as exception:
         await admin_source_ForException(
@@ -390,142 +511,157 @@ async def admin_handler_AdminRequests(message: types.Message):
             function='admin_handler_AdminRequests'
         )
 
-# Удаление пользователя из базы данных
 async def admin_handler_UserRemove(message: types.Message):
+    '''
+    Удаление пользователя из базы данных, белого списка и списка операторов сервера
+    :param message:
+    :return:
+    '''
     try:
         if message.from_user.id == ID:
-            if len(message.text) <= 21:
+            id = message.text[21:]
+            if not id:
                 await bot.send_message(
                     chat_id=message.from_user.id,
                     text='Напишите в формате "Удалить пользователя id"'
                 )
-                print(f'Админ {message.from_user.id} {message.from_user.username} использовал неполную команду удаления пользователя.')
+                await other.other_source_Logging(
+                    id=message.from_user.id,
+                    filename=filename,
+                    function='admin_handler_UserRemove',
+                    exception='Incomplete command.',
+                    content=''
+                )
+                return
+            data = await other.other_source_UserData(
+                id=id,
+                formatted=False,
+            )
+            data_formatted = await other.other_source_UserData(
+                id=id,
+                formatted=True
+            )
+            data_admin = await other.other_source_UserData(
+                id=message.from_user.id,
+                formatted=False
+            )
+            data_admin_formatted = await other.other_source_UserData(
+                id=message.from_user.id,
+                formatted=True
+            )
+            try:
+                response_wl = await bot_rc.bot_rc_Universal(command=f'whitelist remove {data["nickname"]}')
+                response_dp = await bot_rc.bot_rc_Universal(command=f'deop {data["nickname"]}')
+            except:
+                await other.other_source_UserAlert(
+                    id=message.from_user.id,
+                    type='server_offline',
+                    filename=filename,
+                    function='admin_handler_UserRemove',
+                    exception=''
+                )
+                return
+
+            list_admins = await sqlite_db.user_database_UserCheckAll(
+                line='id',
+                column='isadmin',
+                val='yes'
+            )
+
+            try:
+                await bot.send_message(
+                    chat_id=id,
+                    text='Мы сожалеем, но вы были удалены из базы данных сервера.',
+                    reply_markup=client_kb.kb_help_client
+                )
+                await other.other_source_Logging(
+                    id=id,
+                    filename=filename,
+                    function='admin_handler_UserRemove',
+                    exception='',
+                    content='Оповещён о том, что он удалён из базы данных сервера.'
+                )
+            except:
+                await other.other_source_UserAlert(
+                    id=id,
+                    type='blocked',
+                    filename=filename,
+                    function='admin_handler_UserRemove',
+                    exception='',
+                    admin_id=message.from_user.id
+                )
+
+            response_logging = ''
+            response_db_chat = ''
+            response_db_logging = ''
+            response_wl_chat = ''
+            response_wl_logging = ''
+            response_dp_chat = ''
+            response_dp_logging = ''
+
+            if response_wl == 'Player is not whitelisted':
+                response_wl_chat = 'Не находился в белом списке.'
+                response_wl_logging = f'Попытался удалить из белого списка отсутствующего там игрока.'
+            elif response_wl == f'Removed {data["nickname"]} from the whitelist':
+                response_wl_chat = 'Удалён из белого списка.'
+                response_wl_logging = f'Удалил из белого списка игрока.'
+
+            if data['isadmin'] == 'yes':
+                if response_dp == 'Nothing changed. The player is not an operator':
+                    response_dp_chat = 'Не являлся оператором сервера.'
+                    response_dp_logging = f'| Попытался забрать отсутствующие права оператора у игрока. '
+                elif response_dp == f'Made {data["nickname"]} no longer a server operator':
+                    response_dp_chat = 'Больше не является оператором сервера.'
+                    response_dp_logging = f'| Забрал права оператора у игрока. '
+
+            response_db = await sqlite_db.admin_database_UserRemove(id=id)
+            if response_db:
+                response_db_chat = 'Удалён из базы данных сервера.'
+                response_db_logging = 'Удалил из базы данных сервера пользователя.'
             else:
-                id=message.text[21:]
-                data = await other.other_source_UserData(id=id)
-                try:
-                    response_wl = await admin_rc.admin_rc_Whitelist(
-                        nickname=data['nickname'],
-                        type='remove'
+                response_db_chat = 'Отсутствует в базе данных.'
+                response_db_logging = 'Попытался удалить отсутствуещего в базе данных пользователя.'
+
+            await bot.send_message(
+                chat_id=message.from_user.id,
+                text=f'{data_formatted}\n\n'
+                     f'{response_db_chat}\n'
+                     f'{response_wl_chat}\n'
+                     f'{response_dp_chat}',
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
+            )
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_UserRemove',
+                exception='',
+                content=f'{response_db_logging} | {response_wl_logging} {response_dp_logging}{data}.'
+            )
+            for ret in list_admins:
+                if ret[0] != message.from_user.id:
+                    response_logging = f'{data_admin} удалил'
+                    await bot.send_message(
+                        chat_id=ret[0],
+                        text=f'{data_formatted}\n\n'
+                             f'Удалён из базы данных сервера админом:\n\n'
+                             f'{data_admin_formatted}',
+                        parse_mode=ParseMode.MARKDOWN,
+                        disable_web_page_preview=True
                     )
-                    if response_wl == 'Player is not whitelisted':
-                        await bot.send_message(
-                            chat_id=message.from_user.id,
-                            text='Игрок не находится в вайтлисте.'
-                        )
-                        print(f'Админ {message.from_user.id} {message.from_user.username} пытался удалить из вайтлиста отсутсвующего там игрока {data["username"]} {data["nickname"]}.')
-                    elif response_wl == f'Removed {data["nickname"]} from the whitelist':
-                        await bot.send_message(
-                            chat_id=message.from_user.id,
-                            text=f'Игрок {data["nickname"]} удален из вайтлиста.'
-                        )
-                        print(f'Админ {message.from_user.id} {message.from_user.username} удалил из вайтлиста игрока {data["username"]} {data["nickname"]}.')
-                    if data[2]:
-                        data_admin = await other.other_source_UserData(id=message.from_user.id)
-                        await other.other_source_Logging(
-                            id=message.from_user.id,
-                            filename=filename,
-                            function='admin_handler_UserRemove',
-                            exception='',
-                            content=f'Удалил из БД пользователя {data}.'
-                        )
-                        response_message = ''
-                        response_logging = ''
-                        list_admins = await sqlite_db.user_database_UserCheckAll(
-                            line='id',
-                            column='isadmin',
-                            val='yes'
-                        )
-                        for ret in list_admins:
-                            if ret[0] != message.from_user.id:
-                                response_message = f'{data_admin} удалил'
-                                response_logging = response_message
-                            elif ret[0] == message.from_user.id:
-                                response_message = 'Вы удалили'
-                                response_logging = 'он удалил'
-                            message = f'пользователя {data} из БД сервера.'
-                            await bot.send_message(
-                                chat_id=ret[0],
-                                text=f'{response_message} {message}'
-                            )
-                            await other.other_source_Logging(
-                                id=ret[0],
-                                filename=filename,
-                                function='admin_handler_UserRemove',
-                                exception='',
-                                content=f'Оповещён, что {response_logging} {message}'
-                            )
-                        try:
-                            await bot.send_message(
-                                chat_id=id,
-                                text='Мы сожалеем, но вы были удалены из базы данных сервера.',
-                                reply_markup=client_kb.kb_help_client
-                            )
-                            await other.other_source_Logging(
-                                id=id,
-                                filename=filename,
-                                function='admin_handler_UserRemove',
-                                exception='',
-                                content='Оповещён о том, что он удалён из БД сервера.'
-                            )
-                        except:
-                            await bot.send_message(
-                                chat_id=message.from_user.id,
-                                text=f'{data["username"]} заблокировал бота и не может получить сообщение.',
-                                parse_mode=ParseMode.MARKDOWN
-                            )
-                            await other.other_source_Logging(
-                                id=message.from_user.id,
-                                filename=filename,
-                                function='admin_handler_UserRemove',
-                                exception='',
-                                content=f'Оповещён о том, что {data} заблокировал бота и не может получить сообщение.'
-                            )
-                        await sqlite_db.admin_database_UserRemove(id=data['id'])
-                    else:
-                        await bot.send_message(
-                            chat_id=message.from_user.id,
-                            text=f'Пользователь {data["username"]} не находится в базе данных.'
-                        )
-                        print(f'Админ {message.from_user.id} попытался удалить из базы данных отсутсвуеющего там игрока {data[2]}.')
-                    if data[5] == 'yes':
-                        response_op = await admin_rc.admin_rc_Op(
-                            nickname=data[3],
-                            type='de'
-                        )
-                        if response_op == 'Nothing changed. The player is not an operator':
-                            await bot.send_message(
-                                chat_id=message.from_user.id,
-                                text=f'Админ {data[2]} не являлся оператором сервера.',
-                                reply_markup=admin_kb.kb_main_admin
-                            )
-                            print(f'Админ {message.from_user.id} попытался забрать отсутствующие у админа {data[4]} права оператора.')
-                        elif response_op == f'Made {data[3]} no longer a server operator':
-                            await bot.send_message(
-                                chat_id=message.from_user.id,
-                                text=f'Пользователь {data[3]} больше не оператор сервера.',
-                                reply_markup=admin_kb.kb_main_admin
-                            )
-                            print(f'Админ {message.from_user.id} забрал у админа {data[4]} права оператора.')
-                except Exception as exception:
-                    if await other_rc.other_rc_ServerOnline():
-                        await other.other_source_UserAlert(
-                            id=message.from_user.id,
-                            type='exception',
-                            filename='admin.py',
-                            function='admin_handler_UserRemove',
-                            exception=exception
-                        )
-                    else:
-                        print(f'Админ {message.from_user.id} {message.from_user.username} обратился с коммандой "whitelist remove" к выключенному серверу.')
-                        await message.answer(
-                            text='Сервер оффлайн!'
-                        )
+                elif ret[0] == message.from_user.id:
+                    response_logging = 'он удалил'
+                await other.other_source_Logging(
+                    id=ret[0],
+                    filename=filename,
+                    function='admin_handler_UserRemove',
+                    exception='',
+                    content=f'Оповещён, что {response_logging} пользователя {data}'
+                )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='Удалить пользователя'
+                function='admin_handler_UserRemove'
             )
     except Exception as exception:
         await admin_source_ForException(
@@ -534,8 +670,12 @@ async def admin_handler_UserRemove(message: types.Message):
             function='admin_handler_UserRemove'
         )
 
-# Получение списка пользователей с одобренными заявками
 async def admin_handler_UserListApproved(message: types.Message):
+    '''
+    Получение списка пользователей с одобренными заявками
+    :param message:
+    :return:
+    '''
     try:
         if message.from_user.id == ID:
             data = await sqlite_db.user_database_UserCheckAll(
@@ -545,21 +685,33 @@ async def admin_handler_UserListApproved(message: types.Message):
             )
             amount = len(data)
             if amount != 0:
-                response = '**Пользователи**\n'
+                response = f'Количество: {amount}\n\n'
                 for ret in data:
-                    response += f'Аккаунт: {ret[2]}\n Telegram ID: {ret[1]}\n Minecraft ник: {ret[3]}\n Время регистрации: {ret[0]}\n Является админом: {ret[5]}\n\n'
-                await bot.send_message(
-                    chat_id=message.from_user.id,
-                    text=response,
-                    parse_mode=ParseMode.MARKDOWN,
-                    disable_web_page_preview=True
-                )
-                print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел список подтвержденных пользователей из {amount} человек.')
+                    account = await other.other_source_UserData(
+                        id=ret[1],
+                        formatted=True
+                    )
+                    response += f'{account}\n\n'
+            else:
+                response = 'Отсутствуют.'
+            await bot.send_message(
+                chat_id=message.from_user.id,
+                text=f'**Белый список**\n\n'
+                     f'{response}',
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
+            )
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_UserListApproved',
+                exception='',
+                content=f'Просмотрел список пользователей из {amount} человек.'
+            )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='Список игроков'
+                function='admin_handler_UserListApproved'
             )
     except Exception as exception:
         await admin_source_ForException(
@@ -568,8 +720,12 @@ async def admin_handler_UserListApproved(message: types.Message):
             function='admin_handler_UserListApproved'
         )
 
-# Получение списка пользователей с отклоненными заявками
 async def admin_handler_UserListBanned(message: types.Message):
+    '''
+    Получение списка пользователей с отклоненными заявками
+    :param message:
+    :return:
+    '''
     try:
         if message.from_user.id == ID:
             data = await sqlite_db.user_database_UserCheckAll(
@@ -579,27 +735,33 @@ async def admin_handler_UserListBanned(message: types.Message):
             )
             amount = len(data)
             if amount != 0:
-                response = '**Черный список**\n'
+                response = f'Количество: {amount}\n\n'
                 for ret in data:
-                    response += f'Telegram тег: {ret[2]}\n Telegram ID: {ret[1]}\n Minecraft ник: {ret[3]}\n Время регистрации: {ret[0]}\n Является админом: {ret[5]}\n\n'
-                await bot.send_message(
-                    chat_id=message.from_user.id,
-                    text=response
-                )
-                print(f'Админ {message.from_user.id} {message.from_user.username} просмотрел список забаненных пользователей из {amount} человек.')
+                    account = await other.other_source_UserData(
+                        id=ret[1],
+                        formatted=True
+                    )
+                    response += f'{account}\n\n'
             else:
-                await bot.send_message(
-                    chat_id=message.from_user.id,
-                    text='Тут пока никого нет',
-                    reply_markup=admin_kb.kb_main_admin
-                )
-                print(
-                    f'Админ {message.from_user.id} {message.from_user.username} просмотрел пустой список забаненных пользователей.')
+                response = 'Отсутствуют.'
+            await bot.send_message(
+                chat_id=message.from_user.id,
+                text=f'**Белый список**\n\n'
+                     f'{response}',
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
+            )
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_UserListBanned',
+                exception='',
+                content=f'Просмотрел список пользователей из {amount} человек.'
+            )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='ЧС'
+                function='admin_handler_UserListBanned'
             )
     except Exception as exception:
         await admin_source_ForException(
@@ -608,24 +770,35 @@ async def admin_handler_UserListBanned(message: types.Message):
             function='admin_handler_UserListBanned'
         )
 
-# Оповещение всех пользователей о чем-то
 async def admin_handler_UserNotify(message: types.Message):
+    '''
+    Оповещение всех пользователей о чём либо
+    :param message:
+    :return:
+    '''
     try:
         if message.from_user.id == ID:
-            if message.text[11:] == '':
+            response = message.text[11:]
+            if not response:
                 await bot.send_message(
                     chat_id=message.from_user.id,
                     text='Напишите в формате:\n'
                          'Оповестить "текст вашего сообщения".'
                 )
-                print(f'Админ {message.from_user.id} {message.from_user.username} использовал неполную команду "Оповестить".')
+                await other.other_source_Logging(
+                    id=message.from_user.id,
+                    filename=filename,
+                    function='admin_handler_UserNotify',
+                    exception='Incomplete command.',
+                    content=''
+                )
             else:
                 data = await sqlite_db.user_database_UserCheckAll(
                     column='approval',
                     val='yes',
                     line='id'
                 )
-                response = message.text[11:]
+                dot = ''
                 if response[-1] == '.' or response[-1] == '!' or response[-1] == '?':
                     dot = ''
                 elif response[-1] == ',' or response[-1] == '\\' or response[-1] == '>' or response[-1] == '<':
@@ -635,17 +808,32 @@ async def admin_handler_UserNotify(message: types.Message):
                 if response[0].islower():
                     response = response[0].upper() + response[1:]
                 for ret in data:
-                    await bot.send_message(
-                        chat_id=ret[0],
-                        text=f'Важное увeдомление!\n'
-                             f'{response}{dot}'
-                    )
-                print(f'Админ {message.from_user.id} {message.from_user.username} выполнил команду "Оповестить" с текстом "{response}"')
+                    try:
+                        await bot.send_message(
+                            chat_id=ret[0],
+                            text=f'Важное увeдомление!\n'
+                                 f'{response}{dot}'
+                        )
+                    except:
+                        await other.other_source_UserAlert(
+                            id=ret[0],
+                            type='blocked',
+                            filename=filename,
+                            function='admin_handler_UserNotify',
+                            exception='',
+                            admin_id=message.from_user.id
+                        )
+                await other.other_source_Logging(
+                    id=message.from_user.id,
+                    filename=filename,
+                    function='admin_handler_UserNotify',
+                    exception='',
+                    content=f'Оповещение "{response}"'
+                )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='Оповестить'
+                function='admin_handler_UserNotify'
             )
     except Exception as exception:
         await admin_source_ForException(
@@ -656,23 +844,24 @@ async def admin_handler_UserNotify(message: types.Message):
 
 async def admin_handler_PlayersMonitoring(message: types.Message):
     try:
+        bot_rc.mcrcon_start()
         if message.from_user.id == ID:
-            keyboard = InlineKeyboardMarkup()
-            keyboard.row(
-                InlineKeyboardButton(text='Запустить', callback_data='monitoring on'),
-                InlineKeyboardButton(text='Остановить', callback_data='monitoring off')
-            )
             await bot.send_message(
                 chat_id=message.from_user.id,
                 text='Мониторинг игроков.',
-                reply_markup=keyboard
+                reply_markup=admin_kb.kb_inline_monitoring
             )
-            print(f'Админ {message.from_user.id} {message.from_user.username} вызвал конмаду "Мониторинг".')
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_PlayersMonitoring',
+                exception='',
+                content='Вызвал данную команду.'
+            )
         else:
             await admin_source_ForElse(
                 id=message.from_user.id,
-                username=message.from_user.username,
-                val='Мониторинг'
+                function='admin_handler_PlayersMonitoring'
             )
     except Exception as exception:
         await admin_source_ForException(

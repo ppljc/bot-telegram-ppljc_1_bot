@@ -2,6 +2,7 @@
 from create_bot import dp
 from data_base import sqlite_db
 from handlers import client, admin, other
+from mcrcons import bot_rc
 
 # -------------- Импорт функций Aiogram --------------
 from aiogram.utils import executor
@@ -11,6 +12,8 @@ async def on_startup(_):
 	print('Бот вышел в онлайн')
 	if sqlite_db.sql_start():
 		print('Data base connected OK!')
+	if bot_rc.mcrcon_start():
+		print('MCRcon connected OK!')
 	await admin.admin_source_OnStartUp()
 
 async def on_shotdown(_):
@@ -25,4 +28,4 @@ client.register_handlers_client(dp)
 executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
 
 # -------------- Комментарии --------------
-# Функции должны обзываться таким образом принадлежность__затрагиваемые_функции__название
+# Функции должны обзываться таким образом принадлежность_затрагиваемыефункции_КонкретноеНазвание

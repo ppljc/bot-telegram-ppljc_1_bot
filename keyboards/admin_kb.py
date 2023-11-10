@@ -10,3 +10,8 @@ kma6 = KeyboardButton('Мониторинг')
 kb_main_admin = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_main_admin.add(kma1, kma2, kma3)
 kb_main_admin.add(kma4, kma5, kma6)
+
+kim1 = InlineKeyboardButton(text='Запустить', callback_data='monitoring on')
+kim2 = InlineKeyboardButton(text='Остановить', callback_data='monitoring off')
+kb_inline_monitoring = InlineKeyboardMarkup()
+kb_inline_monitoring.row(kim1, kim2)

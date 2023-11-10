@@ -1,1 +1,1 @@
-from mcrcons import admin_rc
+from mcrcons import bot_rc

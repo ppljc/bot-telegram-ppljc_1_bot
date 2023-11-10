@@ -15,3 +15,7 @@ kcp1 = KeyboardButton('Проблема you are not whitelisted on this server')
 kcp2 = KeyboardButton('/help')
 kb_client_problem = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_client_problem.row(kcp1, kcp2)
+
+kcpn = KeyboardButton('Отправить номер телефона', request_contact=True)
+kb_client_phonenumber = ReplyKeyboardMarkup(resize_keyboard=True)
+kb_client_phonenumber.add(kcpn)
