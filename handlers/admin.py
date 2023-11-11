@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import emoji
+import math
 
 # -------------- Импорт локальных функций --------------
 from handlers import client, other
@@ -30,7 +31,6 @@ async def admin_source_OnStartUp():
         column='isadmin',
         val='yes'
     )
-    print(list_admins)
     for ret in list_admins:
         await bot.send_message(
             chat_id=ret[0],
@@ -685,23 +685,32 @@ async def admin_handler_UserListApproved(message: types.Message):
                 val='yes'
             )
             amount = len(data)
+            response = []
             if amount != 0:
-                response = f'Количество: {amount}\n\n'
-                for ret in data:
-                    account = await other.other_source_UserData(
-                        id=ret[1],
-                        formatted=True
-                    )
-                    response += f'{account}\n\n'
+                response.append(f'Количество: {amount}\n\n')
+                number = 0
+                for val in range(0, amount, 20):
+                    data = data[val:][:(val+20)]
+                    for ret in data:
+                        account = await other.other_source_UserData(
+                            id=ret[1],
+                            formatted=True
+                        )
+                        response[number] += f'{account}\n\n'
+                    number += 1
+                    if math.ceil(amount / 20) > 1:
+                        response.append('')
             else:
-                response = 'Отсутствуют.'
-            await bot.send_message(
-                chat_id=message.from_user.id,
-                text=f'**Белый список**\n\n'
-                     f'{response}',
-                parse_mode=ParseMode.MARKDOWN,
-                disable_web_page_preview=True
-            )
+                response.append('Количество: 0\n\n'
+                                'Здесь пока пусто.')
+            for num in range(0, len(response)):
+                await bot.send_message(
+                    chat_id=message.from_user.id,
+                    text=f'**Белый список**\n\n'
+                         f'{response[num]}',
+                    parse_mode=ParseMode.MARKDOWN,
+                    disable_web_page_preview=True
+                )
             await other.other_source_Logging(
                 id=message.from_user.id,
                 filename=filename,
@@ -735,22 +744,38 @@ async def admin_handler_UserListBanned(message: types.Message):
                 val='ban'
             )
             amount = len(data)
+            response = []
             if amount != 0:
-                response = f'Количество: {amount}\n\n'
-                for ret in data:
-                    account = await other.other_source_UserData(
-                        id=ret[1],
-                        formatted=True
-                    )
-                    response += f'{account}\n\n'
+                response.append(f'Количество: {amount}\n\n')
+                number = 0
+                for val in range(0, amount, 20):
+                    data = data[val:][:(val + 20)]
+                    for ret in data:
+                        account = await other.other_source_UserData(
+                            id=ret[1],
+                            formatted=True
+                        )
+                        response[number] += f'{account}\n\n'
+                    number += 1
+                    if math.ceil(amount / 20) > 1:
+                        response.append('')
             else:
-                response = 'Отсутствуют.'
-            await bot.send_message(
-                chat_id=message.from_user.id,
-                text=f'**Белый список**\n\n'
-                     f'{response}',
-                parse_mode=ParseMode.MARKDOWN,
-                disable_web_page_preview=True
+                response.append('Количество: 0\n\n'
+                                'Здесь пока пусто.')
+            for num in range(0, len(response)):
+                await bot.send_message(
+                    chat_id=message.from_user.id,
+                    text=f'**Черный список**\n\n'
+                         f'{response[num]}',
+                    parse_mode=ParseMode.MARKDOWN,
+                    disable_web_page_preview=True
+                )
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_UserListApproved',
+                exception='',
+                content=f'Просмотрел список пользователей из {amount} человек.'
             )
             await other.other_source_Logging(
                 id=message.from_user.id,
