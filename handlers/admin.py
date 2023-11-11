@@ -689,16 +689,20 @@ async def admin_handler_UserListApproved(message: types.Message):
             if amount != 0:
                 response.append(f'Количество: {amount}\n\n')
                 number = 0
-                for val in range(0, amount, 20):
-                    data = data[val:][:(val+20)]
-                    for ret in data:
+                for val in range(0, amount, 15):
+                    if (amount - val) >= 15:
+                        data_user = data[val:][:(val+15)]
+                    else:
+                        data_user = data[val:]
+
+                    for ret in data_user:
                         account = await other.other_source_UserData(
                             id=ret[1],
                             formatted=True
                         )
                         response[number] += f'{account}\n\n'
                     number += 1
-                    if math.ceil(amount / 20) > 1:
+                    if math.ceil((amount - val) / 15) > 1:
                         response.append('')
             else:
                 response.append('Количество: 0\n\n'
