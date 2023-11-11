@@ -32,6 +32,11 @@ async def client_source_Phone(message, function):
 			exception='',
 			content='Оповещён, что для взаимодействия с ботом должен предоставить номер телефона.'
 		)
+		await sqlite_db.user_database_UsernameUpdate(
+			message=message,
+			filename=filename,
+			function=function
+		)
 		return 0
 	else:
 		return 1
@@ -408,6 +413,11 @@ async def client_handler_ClientPhone(message: types.Message):
 			function='client_handler_ClientPhone',
 			exception='',
 			content=f'Предоставил свой номер телефона "{phone}"'
+		)
+		await sqlite_db.user_database_UsernameUpdate(
+			message=message,
+			filename=filename,
+			function='client_handler_ClientPhone'
 		)
 
 def register_handlers_client(dp: Dispatcher):
