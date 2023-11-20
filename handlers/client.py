@@ -492,54 +492,59 @@ async def client_handler_ClientImagemapsUploadFile(message: types.Message, state
 	:param state:
 	:return:
 	'''
-	try:
-		if message.caption != None and (message.content_type == 'photo' or message.content_type == 'document'):
-			async with state.proxy() as data:
-				if message.content_type == 'photo':
-					await message.photo[-1].download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
-				else:
-					await message.document.download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
-				data['file'] = [message.caption, imagemaps.imagemaps_pillow_ImageFormat(name=message.caption)]
+	phone_check = await client_source_Phone(
+		message=message,
+		function='client_handler_ClientImagemapsUploadStart'
+	)
+	if phone_check:
+		try:
+			if message.caption != None and (message.content_type == 'photo' or message.content_type == 'document'):
+				async with state.proxy() as data:
+					if message.content_type == 'photo':
+						await message.photo[-1].download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
+					else:
+						await message.document.download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
+					data['file'] = [message.caption, imagemaps.imagemaps_pillow_ImageFormat(name=message.caption)]
+					await bot.send_message(
+						chat_id=message.from_user.id,
+						text=f'Соотношение сторон карты {message.caption} определено как: {data["file"][1][0]}:{data["file"][1][1]}',
+						reply_markup=client_kb.kb_client_cancel
+					)
+					await bot.send_message(
+						chat_id=message.from_user.id,
+						text=f'Выберите размер карты (в блоках) {emoji.emojize(":triangular_ruler:")}',
+						reply_markup=client_kb.kbgen_inline_Format(ratio=data['file'][1])
+					)
+				await other.other_source_Logging(
+					id=message.from_user.id,
+					filename=filename,
+					function='client_handler_ClientImagemapsUploadFile',
+					exception='',
+					content=f'Начал добавление на сервер карты с названием "{message.caption}".'
+				)
+				await FSMImageMapsUpload.next()
+			else:
 				await bot.send_message(
 					chat_id=message.from_user.id,
-					text=f'Соотношение сторон карты {message.caption} определено как: {data["file"][1][0]}:{data["file"][1][1]}',
+					text='Отправьте файл снова, но с подписанным названием!',
 					reply_markup=client_kb.kb_client_cancel
 				)
-				await bot.send_message(
-					chat_id=message.from_user.id,
-					text=f'Выберите размер карты (в блоках) {emoji.emojize(":triangular_ruler:")}',
-					reply_markup=client_kb.kbgen_inline_Format(ratio=data['file'][1])
+				await other.other_source_Logging(
+					id=message.from_user.id,
+					filename=filename,
+					function='client_handler_ClientImagemapsUploadFile',
+					exception=f'No caption with {message.content_type}.',
+					content=''
 				)
-			await other.other_source_Logging(
+				await FSMImageMapsUpload.file.set()
+		except Exception as exception:
+			await other.other_source_UserAlert(
 				id=message.from_user.id,
+				type='exception',
 				filename=filename,
 				function='client_handler_ClientImagemapsUploadFile',
-				exception='',
-				content=f'Начал добавление на сервер карты с названием "{message.caption}".'
+				exception=exception
 			)
-			await FSMImageMapsUpload.next()
-		else:
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Отправьте файл снова, но с подписанным названием!',
-				reply_markup=client_kb.kb_client_cancel
-			)
-			await other.other_source_Logging(
-				id=message.from_user.id,
-				filename=filename,
-				function='client_handler_ClientImagemapsUploadFile',
-				exception=f'No caption with {message.content_type}.',
-				content=''
-			)
-			await FSMImageMapsUpload.file.set()
-	except Exception as exception:
-		await other.other_source_UserAlert(
-			id=message.from_user.id,
-			type='exception',
-			filename=filename,
-			function='client_handler_ClientImagemapsUploadFile',
-			exception=exception
-		)
 
 async def client_handler_ClientImagemapsUploadCancel(message: types.Message, state: FSMContext):
 	'''
