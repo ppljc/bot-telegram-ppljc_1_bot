@@ -911,3 +911,5 @@ def register_handlers_admin(dp: Dispatcher):
     dp.register_message_handler(admin_handler_UserListApproved, Text('Список пользователей'))
     dp.register_message_handler(admin_handler_UserRemove, Text(startswith='Удалить пользователя'))
     dp.register_message_handler(admin_handler_UserNotify, Text(startswith='Оповестить'))
+
+# dp.register_message_handler(admin_handler_ServerCommand, Text('Команда'))
