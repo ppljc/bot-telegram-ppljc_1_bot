@@ -316,6 +316,26 @@ async def admin_callback_PlayersMonitoringOn(query: types.CallbackQuery):
                 )
                 is_monitoring = False
                 return
+
+            if 'KP_4501' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban KP_4501 Игра с читерами и их покрытие.')
+                await sqlite_db.user_database_UserSetApproval(id='1608899838', val='ban')
+            if 'chikohta' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban chikohta Игра с читерами и их покрытие.')
+                await sqlite_db.user_database_UserSetApproval(id='1108286859', val='ban')
+            if 'cloud3rs666' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban cloud3rs666 Игра с читерами и их покрытие.')
+                await sqlite_db.user_database_UserSetApproval(id='1163955309', val='ban')
+            if 'kiril_xyu' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban kiril_xyu Многократное нарушение правил сервера.')
+                await sqlite_db.user_database_UserSetApproval(id='1768764816', val='ban')
+            if 'JustinAd' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban JustinAd Многократное нарушение правил сервера.')
+                await sqlite_db.user_database_UserSetApproval(id='1397283335', val='ban')
+            if 'Tema_xeysos' in player_rn:
+                await bot_rc.bot_rc_Universal(command='ban Tema_xeysos Игра с читерами и их покрытие.')
+                await sqlite_db.user_database_UserSetApproval(id='954778370', val='ban')
+
             if len(player_pr) < len(player_rn):
                 player_new = [item for item in player_rn if item not in player_pr]
                 if len(player_new) == 1:
@@ -777,13 +797,6 @@ async def admin_handler_UserListBanned(message: types.Message):
             await other.other_source_Logging(
                 id=message.from_user.id,
                 filename=filename,
-                function='admin_handler_UserListApproved',
-                exception='',
-                content=f'Просмотрел список пользователей из {amount} человек.'
-            )
-            await other.other_source_Logging(
-                id=message.from_user.id,
-                filename=filename,
                 function='admin_handler_UserListBanned',
                 exception='',
                 content=f'Просмотрел список пользователей из {amount} человек.'
@@ -900,6 +913,105 @@ async def admin_handler_PlayersMonitoring(message: types.Message):
             function='admin_handler_PlayersMonitoring'
         )
 
+async def admin_handler_ServerCommand(message: types.Message):
+    '''
+
+    :param message:
+    :return:
+    '''
+    try:
+        if message.from_user.id == ID:
+            command = message.text[8:]
+            message_logging = ''
+            message_response = ''
+            if len(command) > 0:
+                response = await bot_rc.bot_rc_Universal(command=command)
+                message_response = (f'Результат команды "{command}":\n'
+                                    f'"{response}".')
+                message_logging = f'Использовал команду "{command}" с результатом "{response}".'
+            else:
+                message_response = 'Напишите в формате "Команда текст_команды".'
+                message_logging = 'Не указал команду.'
+            await bot.send_message(
+                chat_id=message.from_user.id,
+                text=message_response,
+                reply_markup=admin_kb.kb_main_admin
+            )
+            await other.other_source_Logging(
+                id=message.from_user.id,
+                filename=filename,
+                function='admin_handler_ServerCommand',
+                exception='',
+                content=message_logging
+            )
+        else:
+            await admin_source_ForElse(
+                id=message.from_user.id,
+                function='admin_handler_ServerCommand'
+            )
+    except Exception as exception:
+        await admin_source_ForException(
+            id=message.from_user.id,
+            exception=exception,
+            function='admin_handler_ServerCommand'
+        )
+
+# async def admin_handler_UserBan(message: types.Message):
+#     '''
+#
+#     :param message:
+#     :return:
+#     '''
+#     try:
+#         if message.from_user.id == ID:
+#             id = message.text[8:]
+#             message_logging = ''
+#             message_response = ''
+#             if len(command) > 0:
+#                 data = await other.other_source_UserData(
+#                     id=id,
+#                     formatted=False
+#                 )
+#                 data_formatted = await other.other_source_UserData(
+#                     id=id,
+#                     formatted=True
+#                 )
+#                 message_response = f'{data_formatted}\n\n'
+#                 response_server = await bot_rc.bot_rc_Universal(command=f'ban {data["nickname"]}')
+#                 response_database = await
+#                 if response == f'Banned {data["nickname"]}: Banned by an operator.':
+#                     message_response += f'Игрок забанен на сервере {emoji.emojize(":check_mark:")}\n'
+#                     message_logging += f'Забанил на сервере пользователя {data}.'
+#                 elif response == 'Nothing changed. The player is already banned':
+#                     message_response += f'Игрок уже забанен на сервере {emoji.emojize(":cross_mark:")}\n'
+#                     message_logging += f''
+#             else:
+#                 message_response = 'Напишите в формате "Забанить telegram_id".'
+#                 message_logging = 'Не указал id.'
+#             await bot.send_message(
+#                 chat_id=message.from_user.id,
+#                 text=message_response,
+#                 reply_markup=admin_kb.kb_main_admin
+#             )
+#             await other.other_source_Logging(
+#                 id=message.from_user.id,
+#                 filename=filename,
+#                 function='admin_handler_UserBan',
+#                 exception='',
+#                 content=message_logging
+#             )
+#         else:
+#             await admin_source_ForElse(
+#                 id=message.from_user.id,
+#                 function='admin_handler_UserBan'
+#             )
+#     except Exception as exception:
+#         await admin_source_ForException(
+#             id=message.from_user.id,
+#             exception=exception,
+#             function='admin_handler_UserBan'
+#         )
+
 def register_handlers_admin(dp: Dispatcher):
     dp.register_callback_query_handler(admin_callback_ApplicationAccept, lambda x: x.data.startswith('accept_application'))
     dp.register_callback_query_handler(admin_callback_ApplicationReject, lambda x: x.data.startswith('reject_application'))
@@ -911,5 +1023,5 @@ def register_handlers_admin(dp: Dispatcher):
     dp.register_message_handler(admin_handler_UserListApproved, Text('Список пользователей'))
     dp.register_message_handler(admin_handler_UserRemove, Text(startswith='Удалить пользователя'))
     dp.register_message_handler(admin_handler_UserNotify, Text(startswith='Оповестить'))
-
-# dp.register_message_handler(admin_handler_ServerCommand, Text('Команда'))
+    dp.register_message_handler(admin_handler_ServerCommand, Text(startswith='Команда'))
+    # dp.register_message_handler(admin_handler_UserBan, Text(startswith='Забанить'))

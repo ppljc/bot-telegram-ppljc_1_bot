@@ -143,7 +143,7 @@ async def other_source_UserAlert(id, type, filename, function, exception, admin_
                 chat_id=ret[0],
                 text=f'{data_formatted}\n\n'
                      f'Отправил заявку на регистрацию.',
-                reply_markup=client_kb.kb_client,
+                reply_markup=admin_kb.kb_main_admin,
                 parse_mode=ParseMode.MARKDOWN,
                 disable_web_page_preview=True
             )
