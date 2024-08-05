@@ -1,6 +1,8 @@
+# Python модули
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from data_base import sqlite_db
 
+
+# Клавиатуры
 kma1 = KeyboardButton('Удалить пользователя')
 kma2 = KeyboardButton('Просмотреть заявки')
 kma3 = KeyboardButton('Список пользователей')

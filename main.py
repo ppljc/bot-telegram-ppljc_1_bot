@@ -1,33 +1,56 @@
-# -------------- Импорт локальных функций --------------
-from create_bot import dp
-from data_base import sqlite_db
-from handlers import client, admin, other
-from mcrcons import bot_rc
+# Локальные модули
+from create_bot import dp, db, bot, rcon
+from utilities.logger import logger
+from utilities import values
+from handlers import client
 
-# -------------- Импорт функций Aiogram --------------
+
+# Python модули
 from aiogram.utils import executor
 
-# -------------- Функции on_startup и on_shotdown --------------
-async def on_startup(_):
-	print('Бот вышел в онлайн')
-	if sqlite_db.sql_start():
-		print('Data base connected OK!')
-	if bot_rc.mcrcon_start():
-		print('MCRcon connected OK!')
-	if other.other_source_StartLogging():
-		print('Logger created OK!')
-	await admin.admin_source_OnStartUp()
+import nest_asyncio
 
-async def on_shotdown(_):
-	pass
 
-# -------------- Регистрация всех hadler функций --------------
-admin.register_handlers_admin(dp)
-#other.register_handlers_other(dp)
-client.register_handlers_client(dp)
+# Функции onstartup и onshutdown
+async def onstartup(_):
+	nest_asyncio.apply()
 
-# -------------- Запуск бота --------------
-executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+	bot_user = await bot.get_me()
+	logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="up and running..."')
 
-# -------------- Комментарии --------------
-# Функции должны обзываться таким образом принадлежность_затрагиваемыефункции_КонкретноеНазвание
+	if await db.connect():
+		logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="database started"')
+	else:
+		logger.error(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="database NOT started"')
+
+	if await rcon.connect():
+		logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="rcon started"')
+	else:
+		logger.error(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="rcon NOT started"')
+
+	await values.read_values(file='admins')
+
+
+async def onshutdown(_):
+	bot_user = await bot.get_me()
+
+	if await db.close():
+		logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="database finished"')
+	else:
+		logger.error(
+			f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="database NOT finished correct"')
+
+	if await rcon.close():
+		logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="rcon finished"')
+	else:
+		logger.error(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="rcon NOT finished correct"')
+
+	logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="shutting down..."')
+
+
+# Регистрация хендлеров
+client.register_handlers(dp=dp)
+
+
+# Запуск бота
+executor.start_polling(dp, skip_updates=True, on_startup=onstartup)

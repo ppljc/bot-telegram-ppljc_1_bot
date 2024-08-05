@@ -1,623 +1,442 @@
-# -------------- Импорт локальных функций --------------
-import config
-from handlers import other
-from create_bot import bot
-from mcrcons import bot_rc
-from keyboards import client_kb
-from data_base import sqlite_db
-from image_maps import imagemaps
+# Локальные модули
+from create_bot import bot, db, rcon
+from utilities import imagemaps
+from utilities.formatter import user_data
+from utilities.logger import logger
+from utilities.other import admin_mailing, image_to_server
 
-# -------------- Импорт модулей Aiogram --------------
+# Python модули
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
-from aiogram.types import ReplyKeyboardRemove
-from aiogram.dispatcher.filters import BoundFilter
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ContentTypes
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-# -------------- Импорт функций --------------
-import emoji
+# Переменные
+keyboard_sub = InlineKeyboardMarkup()
+keyboard_sub.row(
+	InlineKeyboardButton(text='Статус 🔎', callback_data='server_status'),
+	InlineKeyboardButton(text='Проблема ❓', callback_data='issue'),
+)
+keyboard_sub.row(
+	InlineKeyboardButton(text='Картинки 🖼️', callback_data='imagemaps'),
+	InlineKeyboardButton(text='Поддержать 💸', callback_data='donate')
+)
 
-# -------------- Объявление переменных --------------
-filename = 'client.py'
+keyboard_unsub = InlineKeyboardMarkup()
+keyboard_unsub.row(
+	InlineKeyboardButton(text='Статус 🔎', callback_data='server_status'),
+	InlineKeyboardButton(text='Поддержать 💸', callback_data='donate')
+)
 
-# -------------- FSM классы --------------
-class FSMImageMapsUpload(StatesGroup):
-	file = State()
+keyboard_register = InlineKeyboardMarkup()
+keyboard_register.row(InlineKeyboardButton(text='Зарегистрироваться ⚒️', callback_data='register'))
+
+keyboard_menu = InlineKeyboardMarkup()
+keyboard_menu.row(InlineKeyboardButton(text='⬅️ Назад', callback_data='menu'))
+
+
+# Классы
+class FSMRegister(StatesGroup):
+	first_message = State()
+	nickname = State()
+
+
+class FSMIssue(StatesGroup):
+	first_message = State()
+	issue = State()
+
+
+class FSMImagemaps(StatesGroup):
+	first_message = State()
+	name = State()
 	format = State()
 
-# -------------- Вспомогательные функции --------------
-async def client_source_Phone(message, function):
-	data = await other.other_source_UserData(
-		id=message.from_user.id,
-		formatted=False,
-	)
-	if data['phone'] == 'not':
-		await bot.send_message(
-			chat_id=message.from_user.id,
-			text='Для взаимодейсвия с ботом вам нужно поделиться с ним номером телефона. Мы гарантируем, что ваш номер телефона не попадёт третьим лицам.',
-			reply_markup=client_kb.kb_client_phonenumber
-		)
-		await other.other_source_Logging(
-			id=message.from_user.id,
-			filename=filename,
-			function=function,
-			exception='',
-			content='Оповещён, что для взаимодействия с ботом должен предоставить номер телефона.'
-		)
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function=function
-		)
-		return 0
-	else:
-		return 1
 
-# -------------- Handler функции --------------
-async def client_handler_UserStart(message: types.Message):
-	'''
-	The command is triggered when the '/start' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	await sqlite_db.user_database_UsernameUpdate(
-		message=message,
-		filename=filename,
-		function='client_handler_UserStart'
-	)
+# Функции
+async def message_start(message: types.Message):
 	try:
-		data = await other.other_source_UserData(id=message.from_user.id)
-		if data['approval']:
-			phone_check = await client_source_Phone(
-				message=message,
-				function='client_handler_Any'
-			)
-			if not phone_check:
-				return
+		await message.delete()
+
+		data = await user_data(user_id=message.from_user.id)
+
 		if data['approval'] == 'yes':
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Вы уже зарегистрированы!',
-				reply_markup=client_kb.kb_client
+			text = 'Вы уже зарегистрированы и у вас куча возможностей ⬇️'
+			reply_markup = keyboard_sub
+		elif data['approval'] == 'not':
+			text = (
+				'Ваша заявка на рассмотрении, ожидайте\n'
+				'Пока что можете глянуть, как там дела с сервером ⬇️'
+			)
+			reply_markup = keyboard_unsub
+		elif data['approval'] == 'ban':
+			text = (
+				'Ваша заявка отклонена\n'
+				'Вы можете куда-то обратиться по этому поводу..'
+			)
+			reply_markup = None
+		else:
+			text = (
+				'Привет, это ассистент Сервер53\n'
+				'Чтобы начать, жми на кнопку ⬇️'
+			)
+			reply_markup = keyboard_register
+
+		await message.answer(
+			text=text,
+			reply_markup=reply_markup
+		)
+
+		logger.info(f'USER={message.from_user.id}, MESSAGE="approval={data["approval"]}"')
+	except Exception as e:
+		logger.error(f'USER={message.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_cancel(query: types.CallbackQuery, state: FSMContext):
+	try:
+		await query.answer()
+
+		await state.finish()
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == 'yes':
+			text = 'Вы уже зарегистрированы и у вас куча возможностей ⬇️'
+			reply_markup = keyboard_sub
+		elif data['approval'] == 'not':
+			text = (
+				'Ваша заявка на рассмотрении, ожидайте\n'
+				'Пока что можете глянуть, как там дела с сервером ⬇️'
+			)
+			reply_markup = keyboard_unsub
+		elif data['approval'] == 'ban':
+			text = (
+				'Ваша заявка отклонена\n'
+				'Вы можете куда-то обратиться по этому поводу..'
+			)
+			reply_markup = None
+		else:
+			text = (
+				'Чтож, я ассистент Сервер53\n'
+				'Чтобы начать, жми на кнопку ⬇️'
+			)
+			reply_markup = keyboard_register
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=reply_markup
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_register(query: types.CallbackQuery, state: FSMContext):
+	try:
+		await query.answer()
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == '':
+			text = 'Введи свой никнейм из майнкрафта:'
+
+			await state.update_data(first_message=query.message.message_id)
+			await FSMRegister.nickname.set()
+		else:
+			text = 'Кажется, вам не сюда.'
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=keyboard_menu
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def message_register_nickname(message: types.Message, state: FSMContext):
+	try:
+		data = await state.get_data()
+		await state.finish()
+
+		await db.add(
+			user_id=message.from_user.id,
+			nickname=message.text
+		)
+
+		user = await user_data(
+			user_id=message.from_user.id,
+			formatted=True
+		)
+
+		reply_markup = InlineKeyboardMarkup()
+		reply_markup.row(
+			InlineKeyboardButton(text='Принять ✅', callback_data=f'register_accept_{message.from_user.id}'),
+			InlineKeyboardButton(text='Отклонить ❌', callback_data=f'register_reject_{message.from_user.id}')
+		)
+
+		await admin_mailing(
+			text=(
+				'❗❗ Новая заявка на регистрацию\n\n'
+				f'{user}'
+			),
+			reply_markup=reply_markup
+		)
+
+		await message.delete()
+		await bot.edit_message_text(
+			chat_id=message.from_user.id,
+			message_id=data['first_message'],
+			text=f'Ваша заявка с никнеймом "{message.text}" отправлена на рассмотрение модераторам 🔍',
+			reply_markup=keyboard_menu
+		)
+
+		logger.info(f'USER={message.from_user.id}, MESSAGE="nickname={message.text}"')
+	except Exception as e:
+		logger.error(f'USER={message.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_server_status(query: types.CallbackQuery):
+	try:
+		await query.answer()
+
+		status = await rcon.client_status()
+
+		logger.debug(f'USER={query.from_user.id}, MESSAGE="status={status}"')
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == 'yes':
+			text = (
+				'Текущее состояние сервера <b>mc.server53.ru</b>:\n'
+				f'• TPS: {status[0]}\n'
+				f'• Число игроков: {status[1]}\n'
+				f'• Список игроков: {status[2]}'
 			)
 		elif data['approval'] == 'not':
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Ваша заявка на рассмотрении, просим подождать.',
-				reply_markup=client_kb.kb_help_client
-			)
-		elif data['approval'] == 'ban':
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Ваша заявка отклонена. Вы можете обратиться по этому поводу к Васгену.',
-				reply_markup=ReplyKeyboardRemove()
-			)
-		elif data['approval'] == '':
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Привет. Это ассистент Сервера53.\n' \
-					 'Чтобы зарегистрироваться напиши "Регистрация никнейм_из_майнкрафта".\n' \
-					 'Затем используй /help для получения списка команд.',
-				reply_markup=ReplyKeyboardRemove()
-			)
-		await other.other_source_Logging(
-			id=message.from_user.id,
-			filename=filename,
-			function='client_handler_UserStart',
-			exception='',
-			content=f'Вызвал "{message.text}".'
-		)
-	except Exception as exception:
-		if message.chat.title:
-			await other.other_source_Logging(
-				id=message.from_user.id,
-				filename=filename,
-				function='client_handler_UserStart',
-				exception=f'Used {message.text} from group.',
-				content=''
-			)
-			await message.answer(text='Общение с ботом через ЛС, напишите ему: @server53_helper_bot')
-		else:
-			await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='exception',
-				filename=filename,
-				function='client_handler_UserStart',
-				exception=exception
-			)
-	await message.delete()
-
-async def client_handler_UserRegister(message: types.Message):
-	'''
-	The command is triggered when the 'Регистрация никнейм_из_майнкрафта' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	await sqlite_db.user_database_UsernameUpdate(
-		message=message,
-		filename=filename,
-		function='client_handler_UserRegister'
-	)
-	try:
-		nickname = message.text[12:]
-		val_let = 0
-		for ret in nickname:
-			for let in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789':
-				if ret == let:
-					val_let += 1
-					break
-		if val_let != len(nickname) or nickname == '':
-			await bot.send_message(
-				chat_id=message.from_user.id,
-				text='Нельзя использовать в никнейме пробелы и любые другие символы, кроме английского алфавита, арабских цифры и нижнего подчеркивания!'
-			)
-			await other.other_source_Logging(
-				id=message.from_user.id,
-				filename=filename,
-				function='client_handler_UserRegister',
-				exception=f'Used forbidden symbols in nickname "{nickname}".',
-				content=''
+			text = (
+				'Текущее состояние сервера <b>mc.server53.ru</b>:\n'
+				f'• TPS: {status[0]}\n'
+				f'• Число игроков: {status[1]}'
 			)
 		else:
-			request = await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='no_register',
-				filename=filename,
-				function='client_handler_UserRegister',
-				exception=''
-			)
-			if request:
-				await client_handler_UserStart(message)
-			else:
-				if message.from_user.username:
-					username = f'[{message.from_user.first_name}](https://t.me/{message.from_user.username})'
-				else:
-					username = f'[{message.from_user.first_name}](tg://user?id={message.from_user.id})'
-				await sqlite_db.user_database_UserAdd(
-					id=message.from_user.id,
-					username=username,
-					nickname=nickname
-				)
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='request',
-					filename=filename,
-					function='client_handler_UserRegister',
-					exception=''
-				)
-	except Exception as exception:
-		await other.other_source_UserAlert(
-			id=message.from_user.id,
-			type='exception',
-			filename=filename,
-			function='client_handler_UserRegister',
-			exception=exception
+			text = 'Кажется, вам не сюда.'
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=keyboard_menu
 		)
 
-async def client_handler_ClientServerStatus(message: types.Message):
-	'''
-	The command is triggered when the 'Статус' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_Any'
-	)
-	if phone_check:
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function='client_handler_ClientServerStatus'
-		)
-		try:
-			data = await other.other_source_UserData(id=message.from_user.id)
-			if data['approval'] == 'yes':
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='server_status',
-					filename=filename,
-					function='client_handler_ClientServerStatus',
-					exception=''
-				)
-			else:
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='no_register',
-					filename=filename,
-					function='client_handler_ClientServerStatus',
-					exception=True
-				)
-				await client_handler_UserStart(message)
-		except Exception as exception:
-			if await bot_rc.bot_rc_ServerOnline():
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='exception',
-					filename=filename,
-					function='client_handler_ClientServerStatus',
-					exception=exception
-				)
-			else:
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='server_offline',
-					filename=filename,
-					function='client_handler_ClientServerStatus',
-					exception=''
-				)
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
 
-async def client_handler_ClientIssue(message: types.Message):
-	'''
-	The command is triggered when the 'Проблема' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_Any'
-	)
-	if phone_check:
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function='client_handler_ClientIssue'
-		)
-		try:
-			data = await other.other_source_UserData(id=message.from_user.id)
-			if data['approval'] == 'yes':
-				issue = message.text[9:]
-				if issue == '':
-					await bot.send_message(
-						message.from_user.id,
-						text='Какова суть проблемы?\n'
-							 'Если вашей проблемы нет на появивщейся клавиатуре, напишите в формате:\n'
-							 'Проблема "текст проблемы".',
-						reply_markup=client_kb.kb_client_problem
-					)
-					await other.other_source_Logging(
-						id=message.from_user.id,
-						filename=filename,
-						function='client_handler_ClientIssue',
-						exception='Incomplete command.',
-						content=''
-					)
-					return
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='issue',
-					filename=filename,
-					function='client_handler_ClientIssue',
-					exception=issue
-				)
-			else:
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='no_register',
-					filename=filename,
-					function='client_handler_ClientIssue',
-					exception=True
-				)
-				await client_handler_UserStart(message)
-		except Exception as exception:
-			await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='exception',
-				filename=filename,
-				function='client_handler_ClientIssue',
-				exception=exception
-			)
 
-async def client_handler_ClientSponsor(message: types.Message):
-	'''
-	The command is triggered when the 'Поддержать' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_Any'
-	)
-	await sqlite_db.user_database_UsernameUpdate(
-		message=message,
-		filename=filename,
-		function='client_handler_ClientSponsor'
-	)
-	if phone_check:
-		try:
-			data = await other.other_source_UserData(id=message.from_user.id)
-			if data['approval'] == 'yes':
-				await bot.send_message(
-					chat_id=message.from_user.id,
-					text='Мы будем очень благодарны, если вы поддержите наш проект!\n'
-						 'Крипто: BEP20(BSC) - USDT - 0x892fda42e19812bb01f8683caad0520c16ac2e0d\n'
-						 'СБП: +79136610052',
-					reply_markup=client_kb.kb_client
-				)
-				await other.other_source_Logging(
-					id=message.from_user.id,
-					filename=filename,
-					function='client_handler_ClientSponsor',
-					exception='',
-					content='Узнал, как можно поддержать проект.'
-				)
-			else:
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='no_register',
-					filename=filename,
-					function='client_handler_ClientServerStatus',
-					exception=True
-				)
-				await client_handler_UserStart(message)
-		except Exception as exception:
-			await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='exception',
-				filename=filename,
-				function='client_handler_ClientSponsor',
-				exception=exception
-			)
-
-async def client_handler_ClientChangeNickname(message: types.Message):
-	'''
-	The command is triggered when the 'Изменить никнейм' is called
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_Any'
-	)
-	if phone_check:
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function='client_handler_ClientChangeNickname'
-		)
-		pass
-
-async def client_handler_Any(message: types.Message):
-	'''
-	The command is triggered when any other message send to bot
-	:param message: aiogram.types.Message
-	:return: send message to user
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_Any'
-	)
-	if phone_check:
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function='client_handler_Any'
-		)
-		if not message.chat.title:
-			await bot.send_message(message.from_user.id, text=f'{message.from_user.first_name}, я вас не понимаю.', reply_markup=client_kb.kb_help_client)
-
-async def client_handler_ClientPhone(message: types.Message):
-	'''
-
-	:param message:
-	:return:
-	'''
-	data = await other.other_source_UserData(
-		id=message.from_user.id,
-		formatted=False,
-	)
-	if data['phone'] == 'not':
-		phone = message.contact.phone_number
-		if message.contact.phone_number[0] != '+':
-			phone = f'+{phone}'
-		await sqlite_db.user_database_UserSetPhone(
-			id=message.from_user.id,
-			phone=phone
-		)
-		await bot.send_message(
-			chat_id=message.from_user.id,
-			text='Вы успешно предоставили номер телефона.',
-			reply_markup=client_kb.kb_help_client
-		)
-		await other.other_source_Logging(
-			id=message.from_user.id,
-			filename=filename,
-			function='client_handler_ClientPhone',
-			exception='',
-			content=f'Предоставил свой номер телефона "{phone}"'
-		)
-		await sqlite_db.user_database_UsernameUpdate(
-			message=message,
-			filename=filename,
-			function='client_handler_ClientPhone'
-		)
-
-async def client_handler_ClientImagemapsUploadStart(message: types.Message, state: FSMContext):
-	'''
-	Старт добавления новой карты на сервер
-	:param message:
-	:param state:
-	:return:
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_ClientImagemapsUploadStart'
-	)
-	if phone_check:
-		try:
-			data = await other.other_source_UserData(
-				id=message.from_user.id,
-				formatted=False
-			)
-			if data['approval'] == 'yes':
-				await bot.send_message(
-					chat_id=message.from_user.id,
-					text=f'Добавление карты на сервер {emoji.emojize(":sunrise_over_mountains:")}\n\n️'
-						 f'Если хотите добавить картинку на сервер в виде карты, отправьте её с подписью в качестве названия.\n\n'
-						 f'Лучше всего будут выглядеть картинки с размером кратным 128px.\n'
-						 f'И в соотношение сторон: 1:1, 1:2, 2:3 и тп.',
-					reply_markup=client_kb.kb_client_cancel
-				)
-				await FSMImageMapsUpload.file.set()
-				await other.other_source_Logging(
-					id=message.from_user.id,
-					filename=filename,
-					function='client_handler_ClientImagemapsUploadStart',
-					exception='',
-					content='Начинает добавлять карту на сервер.'
-				)
-			else:
-				await other.other_source_UserAlert(
-					id=message.from_user.id,
-					type='no_register',
-					filename=filename,
-					function='client_handler_ClientImagemapsUploadStart',
-					exception=True
-				)
-				await client_handler_UserStart(message)
-		except Exception as exception:
-			await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='exception',
-				filename=filename,
-				function='client_handler_ClientImagemapsUploadStart',
-				exception=exception
-			)
-
-async def client_handler_ClientImagemapsUploadFile(message: types.Message, state: FSMContext):
-	'''
-	Загрузка файла для добавления карты на сервер
-	:param message:
-	:param state:
-	:return:
-	'''
-	phone_check = await client_source_Phone(
-		message=message,
-		function='client_handler_ClientImagemapsUploadStart'
-	)
-	if phone_check:
-		try:
-			if message.caption != None and (message.content_type == 'photo' or message.content_type == 'document'):
-				async with state.proxy() as data:
-					if message.content_type == 'photo':
-						await message.photo[-1].download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
-					else:
-						await message.document.download(destination_file=f'{config.imagemaps_path}\\{message.caption}.png')
-					data['file'] = [message.caption, imagemaps.imagemaps_pillow_ImageFormat(name=message.caption)]
-					await bot.send_message(
-						chat_id=message.from_user.id,
-						text=f'Соотношение сторон карты {message.caption} определено как: {data["file"][1][0]}:{data["file"][1][1]}',
-						reply_markup=client_kb.kb_client_cancel
-					)
-					await bot.send_message(
-						chat_id=message.from_user.id,
-						text=f'Выберите размер карты (в блоках) {emoji.emojize(":triangular_ruler:")}',
-						reply_markup=client_kb.kbgen_inline_Format(ratio=data['file'][1])
-					)
-				await other.other_source_Logging(
-					id=message.from_user.id,
-					filename=filename,
-					function='client_handler_ClientImagemapsUploadFile',
-					exception='',
-					content=f'Начал добавление на сервер карты с названием "{message.caption}".'
-				)
-				await FSMImageMapsUpload.next()
-			else:
-				await bot.send_message(
-					chat_id=message.from_user.id,
-					text='Отправьте файл снова, но с подписанным названием!',
-					reply_markup=client_kb.kb_client_cancel
-				)
-				await other.other_source_Logging(
-					id=message.from_user.id,
-					filename=filename,
-					function='client_handler_ClientImagemapsUploadFile',
-					exception=f'No caption with {message.content_type}.',
-					content=''
-				)
-				await FSMImageMapsUpload.file.set()
-		except Exception as exception:
-			await other.other_source_UserAlert(
-				id=message.from_user.id,
-				type='exception',
-				filename=filename,
-				function='client_handler_ClientImagemapsUploadFile',
-				exception=exception
-			)
-
-async def client_handler_ClientImagemapsUploadCancel(message: types.Message, state: FSMContext):
-	'''
-	Отмена добавления карты на сервер
-	:param message:
-	:param state:
-	:return:
-	'''
-	await state.finish()
-	await message.delete()
-	await bot.send_message(
-		chat_id=message.from_user.id,
-		text='Добавление карты отменено.',
-		reply_markup=client_kb.kb_client
-	)
-	await other.other_source_Logging(
-		id=message.from_user.id,
-		filename=filename,
-		function='client_handler_ClientImagemapsUploadCancel',
-		exception='',
-		content='Отменил добавление карты на сервер.'
-	)
-
-async def client_handler_ClientImagemapsUploadFormat(query: types.CallbackQuery, state: FSMContext):
-	'''
-	Установка нужного соотношения в блоках для карты
-	:param query:
-	:param state:
-	:return:
-	'''
+async def callback_issue(query: types.CallbackQuery, state: FSMContext):
 	try:
-		async with state.proxy() as data:
-			name = data['file'][0]
-			ratio = str.split(query.data[6:])
-			ratio = [int(ratio[0]), int(ratio[1])]
-			ratio_message = f'{ratio[0]}:{ratio[1]}'
-			imagemaps.imagemaps_pillow_ImageScale(
-				name=name,
-				ratio=ratio
-			)
-			await bot.send_message(
-				chat_id=query.from_user.id,
-				text=f'Карта {name} в размере {ratio_message} добавлена на сервер {emoji.emojize(":check_mark:")}',
-				reply_markup=client_kb.kb_client
-			)
-		await other.other_source_Logging(
-			id=query.from_user.id,
-			filename=filename,
-			function='client_handler_ClientImagemapsUploadFormat',
-			exception='',
-			content=f'Закончил добавление карты {name} с размером {ratio_message}.'
+		await query.answer()
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == 'yes':
+			text = 'Опишите свою проблему текстом:'
+
+			await state.update_data(first_message=query.message.message_id)
+			await FSMIssue.issue.set()
+		else:
+			text = 'Кажется, вам не сюда.'
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=keyboard_menu
 		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def message_issue_text(message: types.Message, state: FSMContext):
+	try:
+		data = await state.get_data()
 		await state.finish()
-	except Exception as exception:
-		await other.other_source_UserAlert(
-			id=query.from_user.id,
-			type='exception',
-			filename=filename,
-			function='client_handler_ClientImagemapsUploadFormat',
-			exception=exception
+
+		user = await user_data(
+			user_id=message.from_user.id,
+			formatted=True
+		)
+		await admin_mailing(
+			text=(
+				'❗❗ Сообщение о проблеме\n\n'
+				f'{user}\n\n'
+				'Описание:\n'
+				f'{message.text}'
+			)
 		)
 
-def register_handlers_client(dp: Dispatcher):
-	dp.register_message_handler(client_handler_UserStart, commands=['start', 'help'])
-	dp.register_message_handler(client_handler_UserRegister, Text(startswith='Регистрация'))
-	dp.register_message_handler(client_handler_ClientIssue, Text(startswith='Проблема'))
-	dp.register_message_handler(client_handler_ClientServerStatus, Text('Статус'))
-	dp.register_message_handler(client_handler_ClientSponsor, Text('Поддержать'))
-	dp.register_message_handler(client_handler_ClientPhone, content_types=types.ContentType.CONTACT)
+		await message.delete()
+		await bot.edit_message_text(
+			chat_id=message.from_user.id,
+			message_id=data['first_message'],
+			text=(
+				'Ваше обращение отправлено модераторам 🔍\n'
+				'Вы описали проблему так:\n'
+				f'{message.text}'
+			),
+			reply_markup=keyboard_menu
+		)
 
-	dp.register_message_handler(client_handler_ClientImagemapsUploadStart, Text('Добавить карту'), state='*')
-	dp.register_message_handler(client_handler_ClientImagemapsUploadFile, content_types=['document', 'photo'], state=FSMImageMapsUpload.file)
-	dp.register_message_handler(client_handler_ClientImagemapsUploadCancel, Text('Отмена'), state='*')
-	dp.register_callback_query_handler(client_handler_ClientImagemapsUploadFormat, lambda x: x.data.startswith('scale'), state=FSMImageMapsUpload.format)
+		logger.info(f'USER={message.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={message.from_user.id}, MESSAGE="{e}"')
 
-	dp.register_message_handler(client_handler_Any)
+
+async def callback_donate(query: types.CallbackQuery):
+	try:
+		await query.answer()
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == 'yes' or 'not':
+			text = (
+				'Мы будем благодарны, если вы поддержите наш проект!\n'
+				'Крипто: BEP20(BSC) - USDT - 0x892fda42e19812bb01f8683caad0520c16ac2e0d\n'
+				'СБП: +79136610052'
+			)
+		else:
+			text = 'Кажется, вам не сюда.'
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=keyboard_menu
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_imagemaps(query: types.CallbackQuery, state: FSMContext):
+	try:
+		await query.answer()
+
+		data = await user_data(user_id=query.from_user.id)
+
+		if data['approval'] == 'yes':
+			text = (
+				'Добавление карты на сервер 🖼️\n\n'
+				'Если хотите добавить картинку на сервер в виде карты, отправьте её с подписью в качестве названия.\n\n'
+				'Лучше всего будут выглядеть картинки с размером кратным 128px.\n'
+				'И в соотношение сторон: 1:1, 1:2, 2:3 и тп.'
+			)
+
+			await state.update_data(first_message=query.message.message_id)
+			await FSMImagemaps.name.set()
+		else:
+			text = 'Кажется, вам не сюда.'
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=keyboard_menu
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def message_imagemaps_file(message: types.Message, state: FSMContext):
+	try:
+		await message.delete()
+
+		data = await state.get_data()
+
+		if message.caption is not None:
+			logger.debug(f'USER={message.from_user.id}, MESSAGE="name={message.caption}"')
+
+			if message.content_type == 'photo':
+				await message.photo[-1].download(destination_file=f'images\\{message.caption}.png')
+			elif message.content_type == 'document':
+				await message.document.download(destination_file=f'images\\{message.caption}.png')
+
+			image_format = await imagemaps.image_format(name=message.caption)
+
+			text = (
+				f'Соотношение сторон определено как {image_format[0]}:{image_format[1]}\n'
+				f'Теперь выберите размер карты в блоках:'
+			)
+
+			reply_markup = InlineKeyboardMarkup()
+			for i in range(1, 5):
+				ratio_button = f'{image_format[0] * i}:{image_format[1] * i}'
+				ratio_callback = f'{image_format[0] * i}_{image_format[1] * i}'
+				reply_markup.insert(InlineKeyboardButton(text=f'{ratio_button}', callback_data=f'scale_{ratio_callback}'))
+			reply_markup.insert(InlineKeyboardButton(text='⬅️ Назад', callback_data='menu'))
+
+			await state.update_data(name=message.caption)
+			await FSMImagemaps.format.set()
+		else:
+			text = 'Подпишите изображение!'
+			reply_markup = keyboard_menu
+
+		await bot.edit_message_text(
+			chat_id=message.from_user.id,
+			message_id=data['first_message'],
+			text=text,
+			reply_markup=reply_markup
+		)
+
+		logger.info(f'USER={message.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={message.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_imagemaps_format(query: types.CallbackQuery, state: FSMContext):
+	try:
+		await query.answer()
+
+		data = await state.get_data()
+		name = data['name']
+		ratio = [int(i) for i in query.data.split('_')[1:]]
+
+		await imagemaps.image_scale(
+			name=name,
+			ratio=ratio
+		)
+		await image_to_server(image=name)
+
+		await query.message.edit_text(
+			text=f'Карта "{name}" в размере {ratio[0]}:{ratio[1]} добавлена на сервер ✅',
+			reply_markup=keyboard_menu
+		)
+
+		await state.finish()
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+def register_handlers(dp: Dispatcher):
+	dp.register_message_handler(message_start, commands=['start', 'help'])
+
+	dp.register_callback_query_handler(callback_cancel, lambda x: x.data == 'menu', state='*')
+
+	dp.register_callback_query_handler(callback_register, lambda x: x.data == 'register')
+	dp.register_message_handler(message_register_nickname, state=FSMRegister.nickname)
+
+	dp.register_callback_query_handler(callback_server_status, lambda x: x.data == 'server_status')
+
+	dp.register_callback_query_handler(callback_issue, lambda x: x.data == 'issue')
+	dp.register_message_handler(message_issue_text, lambda x: x.content_type == 'text', state=FSMIssue.issue)
+
+	dp.register_callback_query_handler(callback_donate, lambda x: x.data == 'donate')
+
+	dp.register_callback_query_handler(callback_imagemaps, lambda x: x.data == 'imagemaps')
+	dp.register_message_handler(message_imagemaps_file, lambda x: x.content_type in ('photo', 'document'), state=FSMImagemaps.name)
+	dp.register_callback_query_handler(
+		callback_imagemaps_format,
+		lambda x: x.data.startswith('scale_'),
+		state=FSMImagemaps.format
+	)

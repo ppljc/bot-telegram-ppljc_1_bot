@@ -1,9 +1,6 @@
-# created by virtualenv automatically
 *.idea
-*config.py
-*Lib
-*Scripts
-*__pycache__
-*pyvenv.cfg
-*server53.db
-*tasks.md
+*.venv
+server53.db
+tasks.md
+.env
+*logs
